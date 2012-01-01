@@ -53,6 +53,36 @@ except ImportError:
 
 ################################################################################
 
+class test(Command):
+    """
+    Run the unit test suite. All files in the `tests` directory and its
+    subdirectories that match the pattern ``*test.py`` will have their unit
+    test suites executed.
+    """
+
+    description = "Run the unit test suite"
+    user_options = []
+
+    def initialize_options(self):
+        self.verbosity = 2
+
+    def finalize_options(self):
+        try:
+            self.verbosity = int(self.verbosity)
+        except ValueError:
+            raise ValueError('Verbosity must be an integer.')
+
+    def run(self):
+        import sys
+        if sys.version.startswith('2.6') or sys.version.startswith('3.1'):
+            import unittest2 as unittest
+        else:
+            import unittest
+        suite = unittest.TestLoader().discover('tests', pattern='*test.py', top_level_dir='.')
+        unittest.TextTestRunner(verbosity=self.verbosity).run(suite)
+
+################################################################################
+
 # The Cython extension modules to build
 ext_modules = []
 for module in ext_modules:
@@ -66,7 +96,7 @@ setup(
     author_email = 'pyrate_dev@mit.edu',
     url = 'http://github.com/GreenGroup/PyRate',
     packages = ['pyrate'],
-    cmdclass = {'build_ext': build_ext},
+    cmdclass = {'build_ext': build_ext, 'test': test},
     ext_modules = ext_modules,
     include_dirs = ['.', numpy.get_include()],
     requires = ['cython (>=0.15)', 'numpy (>=1.5.0)', 'scipy (>=0.9.0)', 'quantities (>=0.9.0)'],

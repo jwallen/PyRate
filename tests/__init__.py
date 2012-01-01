@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# encoding: utf-8
+
 ################################################################################
 #
 #   PyRate - Python tools for computing chemical reaction rates
@@ -25,24 +28,3 @@
 #   DEALINGS IN THE SOFTWARE. 
 #
 ################################################################################
-
-.PHONY: all build install test clean
-
-all: build
-
-build:
-	python setup.py build_ext --build-lib . --build-temp build --pyrex-c-in-temp
-	
-install:
-	python setup.py install
-
-test:
-	python setup.py test
-
-clean:
-	python setup.py clean --build-temp build
-	rm -rf build/
-	find . -name *.pyc -exec rm -f '{}' \;
-	find . -name *.pyo -exec rm -f '{}' \;
-	find . -name *.pyd -exec rm -f '{}' \;
-	find . -name *.so -exec rm -f '{}' \;
