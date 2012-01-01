@@ -1,0 +1,74 @@
+#!/usr/bin/env python
+# encoding: utf-8
+
+################################################################################
+#
+#   PyRate - Python tools for computing chemical reaction rates
+#
+#   Copyright (c) 2012 by Joshua W. Allen (jwallen@mit.edu)
+#                         Yury V. Suleimanov (ysuleyma@mit.edu)
+#                         William H. Green (whgreen@mit.edu)
+#
+#   Permission is hereby granted, free of charge, to any person obtaining a 
+#   copy of this software and associated documentation files (the "Software"), 
+#   to deal in the Software without restriction, including without limitation
+#   the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+#   and/or sell copies of the Software, and to permit persons to whom the 
+#   Software is furnished to do so, subject to the following conditions:
+#
+#   The above copyright notice and this permission notice shall be included in
+#   all copies or substantial portions of the Software.
+#
+#   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+#   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+#   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+#   THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+#   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
+#   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
+#   DEALINGS IN THE SOFTWARE. 
+#
+################################################################################
+
+try:
+    from distutils.core import setup
+    from distutils.extension import Extension
+    from distutils.cmd import Command
+except ImportError:
+    print('The distutils package is required to install PyRate.')
+    quit()
+
+try:
+    from Cython.Distutils import build_ext
+    import Cython.Compiler.Options
+    Cython.Compiler.Options.annotate = True
+except ImportError:
+    print('The cython package is required to install PyRate.')
+    quit()
+
+try:
+    import numpy
+except ImportError:
+    print('The numpy package is required to install PyRate.')
+    quit()
+
+################################################################################
+
+# The Cython extension modules to build
+ext_modules = []
+for module in ext_modules:
+    module.pyrex_directives = {'embedsignature': True}
+
+setup(
+    name = 'PyRate',
+    version = '0.1.0',
+    description = 'Python tools for computing chemical reaction rates',
+    author = 'Joshua W. Allen, Yury V. Suleimanov, William H. Green',
+    author_email = 'pyrate_dev@mit.edu',
+    url = 'http://github.com/GreenGroup/PyRate',
+    packages = ['pyrate'],
+    cmdclass = {'build_ext': build_ext},
+    ext_modules = ext_modules,
+    include_dirs = ['.', numpy.get_include()],
+    requires = ['cython (>=0.15)', 'numpy (>=1.5.0)', 'scipy (>=0.9.0)', 'quantities (>=0.9.0)'],
+    provides = ['pyrate'],
+)
