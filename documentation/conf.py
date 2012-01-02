@@ -171,25 +171,78 @@ htmlhelp_basename = 'PyRatedoc'
 
 latex_elements = {
 # The paper size ('letterpaper' or 'a4paper').
-#'papersize': 'letterpaper',
+'papersize': 'letterpaper',
 
 # The font size ('10pt', '11pt' or '12pt').
-#'pointsize': '10pt',
+'pointsize': '11pt',
 
 # Additional stuff for the LaTeX preamble.
-#'preamble': '',
+'preamble': r"""
+\usepackage[T1]{fontenc}
+\renewcommand{\sfdefault}{uop}
+\renewcommand{\familydefault}{\sfdefault}
+
+% Use Inconsolata font as fixed-width font
+\usepackage{inconsolata}
+
+% Used for a greater selection of math symbols and fonts
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{mathrsfs}
+
+% Used for nice chemistry equations
+\usepackage[version=3]{mhchem}
+
+% Define custom colors
+\definecolor{TitleColor}{rgb}{0.6,0.2,0.2}
+\definecolor{InnerLinkColor}{rgb}{0.6,0.2,0.2}
+\definecolor{OuterLinkColor}{rgb}{0.6,0.2,0.2}
+\definecolor{VerbatimColor}{rgb}{1,1,1}
+\definecolor{VerbatimBorderColor}{rgb}{1,1,1}
+
+% Custom commands
+\renewcommand{\vector}[1]{\ensuremath{\boldsymbol{\mathbf{#1}}}}
+\renewcommand{\matrix}[1]{\ensuremath{\boldsymbol{\mathbf{#1}}}}
+\newcommand{\tensor}[1]{\ensuremath{\boldsymbol{\mathbf{#1}}}}
+\newcommand{\operator}[1]{\ensuremath{\hat{#1}}}
+\newcommand{\units}[1]{\ensuremath{\mathrm{#1}}}
+\newcommand{\degree}{\ensuremath{^\circ}}
+\newcommand{\laplace}{\ensuremath{\mathcal{L}}}
+""",
+
+# Custom title page
+'maketitle': r"""
+\begin{titlepage}
+\null
+\vfill
+\begin{center}
+\sphinxlogo
+\vskip 4em
+\makeatletter
+{\Huge\sc\color{TitleColor} \@title\par}
+\vskip 12em
+{\LARGE\sc \@author\par}
+\vskip 12em
+{\Large \py@release\releaseinfo\par}
+{\large\it \@date\par}
+\makeatother
+\end{center}
+\vfill
+\null
+\end{titlepage}
+\cleardoublepage
+""",
 }
 
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title, author, documentclass [howto/manual]).
 latex_documents = [
-  ('contents', 'PyRate.tex', u'PyRate Documentation',
-   u'Joshua W. Allen, Yury V. Suleimanov, William H. Green', 'manual'),
+    ('reference/index', 'pyrate_manual.tex', u'The PyRate Reference Manual', u'Joshua W. Allen, Yury V. Suleimanov, William H. Green', 'manual'),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of
 # the title page.
-#latex_logo = None
+latex_logo = '_static/pyrate-logo.pdf'
 
 # For "manual" documents, if this is true, then toplevel headings are parts,
 # not chapters.
@@ -199,7 +252,7 @@ latex_documents = [
 #latex_show_pagerefs = False
 
 # If true, show URL addresses after external links.
-#latex_show_urls = False
+latex_show_urls = 'footnote'
 
 # Documents to append as an appendix to all manuals.
 #latex_appendices = []
