@@ -1,20 +1,15 @@
-.. PyRate documentation master file, created by
-   sphinx-quickstart on Sat Jan 28 15:43:44 2012.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
-
-Welcome to PyRate's documentation!
-==================================
-
-Contents:
+*****************************
+PyRate documentation contents
+*****************************
 
 .. toctree::
-   :maxdepth: 2
-
-
-
-Indices and tables
-==================
+    :maxdepth: 2
+    
+    introduction/index
+    installation/index
+    tutorials/index
+    reference/index
+    faq/index
 
 * :ref:`genindex`
 * :ref:`modindex`
