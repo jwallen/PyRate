@@ -6,4 +6,4 @@ PyRate Reference Manual
     :maxdepth: 2
     :numbered:
     
-    
+    basic/index
