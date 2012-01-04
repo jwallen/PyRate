@@ -84,7 +84,9 @@ class test(Command):
 ################################################################################
 
 # The Cython extension modules to build
-ext_modules = []
+ext_modules = [
+    Extension('pyrate.constants', ['pyrate/constants.py']),
+]
 for module in ext_modules:
     module.pyrex_directives = {'embedsignature': True}
 
