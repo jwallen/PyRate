@@ -86,6 +86,7 @@ class test(Command):
 # The Cython extension modules to build
 ext_modules = [
     Extension('pyrate.constants', ['pyrate/constants.py']),
+    Extension('pyrate.statmech.schrodinger', ['pyrate/statmech/schrodinger.pyx']),
 ]
 for module in ext_modules:
     module.pyrex_directives = {'embedsignature': True}
