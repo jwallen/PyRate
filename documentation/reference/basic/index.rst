@@ -7,3 +7,4 @@ Basic functions in PyRate
     :numbered:
     
     constants
+    units
