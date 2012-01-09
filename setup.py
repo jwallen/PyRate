@@ -89,6 +89,7 @@ ext_modules = [
     Extension('pyrate.statmech.schrodinger', ['pyrate/statmech/schrodinger.pyx']),
     Extension('pyrate.statmech.rotation', ['pyrate/statmech/rotation.pyx']),
     Extension('pyrate.statmech.vibration', ['pyrate/statmech/vibration.pyx']),
+    Extension('pyrate.statmech.torsion', ['pyrate/statmech/torsion.pyx']),
 ]
 for module in ext_modules:
     module.pyrex_directives = {'embedsignature': True}
