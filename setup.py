@@ -87,6 +87,7 @@ class test(Command):
 ext_modules = [
     Extension('pyrate.constants', ['pyrate/constants.py']),
     Extension('pyrate.statmech.schrodinger', ['pyrate/statmech/schrodinger.pyx']),
+    Extension('pyrate.statmech.translation', ['pyrate/statmech/translation.pyx']),
     Extension('pyrate.statmech.rotation', ['pyrate/statmech/rotation.pyx']),
     Extension('pyrate.statmech.vibration', ['pyrate/statmech/vibration.pyx']),
     Extension('pyrate.statmech.torsion', ['pyrate/statmech/torsion.pyx']),
