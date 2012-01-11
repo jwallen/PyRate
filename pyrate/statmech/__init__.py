@@ -28,3 +28,16 @@
 #   DEALINGS IN THE SOFTWARE. 
 #
 ################################################################################
+
+"""
+This subpackage provides classes and functions for working with statistical
+mechanical models of a molecular system.
+"""
+
+from .schrodinger import getPartitionFunction, getHeatCapacity, \
+    getEnthalpy, getEntropy, getDensityOfStates, getSumOfStates
+from .translation import IdealGasTranslation
+from .rotation import LinearRotor, NonlinearRotor, KRotor
+from .vibration import HarmonicOscillator
+from .torsion import HinderedRotor
+from .system import StatMech
