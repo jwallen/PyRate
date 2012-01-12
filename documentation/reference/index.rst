@@ -7,3 +7,4 @@ PyRate Reference Manual
     :numbered:
     
     basic/index
+    statmech/index
