@@ -131,3 +131,140 @@ cdef class HeatCapacityModel:
         method must be overloaded in the derived class.
         """
         raise NotImplementedError('Unexpected call to ThermoModel.get_free_energy(); you should be using a class derived from ThermoModel.')
+
+################################################################################
+
+cdef class Wilhoit(HeatCapacityModel):
+    """
+    A thermodynamics model based on the Wilhoit equation for heat capacity.
+    """
+
+    def __init__(self, Cp0=None, CpInf=None, a0=0.0, a1=0.0, a2=0.0, a3=0.0, H0=None, S0=None, B=None, Tmin=None, Tmax=None, comment=''):
+        HeatCapacityModel.__init__(self, Tmin=Tmin, Tmax=Tmax, comment=comment)
+        self.Cp0 = Cp0
+        self.CpInf = CpInf
+        self.B = B
+        self.a0 = a0
+        self.a1 = a1
+        self.a2 = a2
+        self.a3 = a3
+        self.H0 = H0
+        self.S0 = S0
+    
+    def __repr__(self):
+        """
+        Return a string representation that can be used to reconstruct the
+        Wilhoit object.
+        """
+        Cp0 = '({0:g},"{1}")'.format(float(self.Cp0), str(self.Cp0.dimensionality))
+        CpInf = '({0:g},"{1}")'.format(float(self.CpInf), str(self.CpInf.dimensionality))
+        B = '({0:g},"{1}")'.format(float(self.B), str(self.B.dimensionality))
+        H0 = '({0:g},"{1}")'.format(float(self.H0), str(self.H0.dimensionality))
+        S0 = '({0:g},"{1}")'.format(float(self.S0), str(self.S0.dimensionality))
+        string = 'Wilhoit(Cp0={0}, CpInf={1}, a0={2:g}, a1={3:g}, a2={4:g}, a3={5:g}, H0={6}, S0={7}, B={8}'.format(Cp0, CpInf, self.a0, self.a1, self.a2, self.a3, H0, S0, B)
+        if self._Tmin != 0.0: string += ', Tmin=({0:g},"{1}")'.format(float(self.Tmin), str(self.Tmin.dimensionality))
+        if self._Tmax != 0.0: string += ', Tmax=({0:g},"{1}")'.format(float(self.Tmax), str(self.Tmax.dimensionality))
+        if self.comment != '': string += ', comment="""{0}"""'.format(self.comment)
+        string += ')'
+        return string
+
+    def __reduce__(self):
+        """
+        A helper function used when pickling a Wilhoit object.
+        """
+        return (Wilhoit, (self.Cp0, self.CpInf, self.a0, self.a1, self.a2, self.a3, self.H0, self.S0, self.B, self.Tmin, self.Tmax, self.comment))
+
+    property Cp0:
+        """The (constant-pressure) heat capacity at zero temperature."""
+        def __get__(self):
+            return pq.Quantity(self._Cp0, pq.J / pq.mol / pq.K)
+        def __set__(self, value):
+            if value is None or value == 0:
+                self._Cp0 = 0.0 
+            else:
+                self._Cp0 = float(units.convertHeatCapacity(value, "J/(mol*K)"))
+
+    property CpInf:
+        """The (constant-pressure) heat capacity at infinite temperature."""
+        def __get__(self):
+            return pq.Quantity(self._CpInf, pq.J / pq.mol / pq.K)
+        def __set__(self, value):
+            if value is None or value == 0:
+                self._CpInf = 0.0 
+            else:
+                self._CpInf = float(units.convertHeatCapacity(value, "J/(mol*K)"))
+
+    property B:
+        """The scaled temperature coefficient."""
+        def __get__(self):
+            return pq.Quantity(self._B, pq.K)
+        def __set__(self, value):
+            if value is None or value == 0:
+                self._B = 0.0 
+            else:
+                self._B = float(units.convertTemperature(value, "K"))
+
+    property H0:
+        """The enthalpy integration constant."""
+        def __get__(self):
+            return pq.Quantity(self._H0 * 0.001, "kJ/mol")
+        def __set__(self, value):
+            if value is None or value == 0:
+                self._H0 = 0.0 
+            else:
+                self._H0 = float(units.convertEnthalpy(value, "J/mol"))
+
+    property S0:
+        """The entropy integration constant."""
+        def __get__(self):
+            return pq.Quantity(self._S0, pq.J / pq.mol / pq.K)
+        def __set__(self, value):
+            if value is None or value == 0:
+                self._S0 = 0.0 
+            else:
+                self._S0 = float(units.convertEntropy(value, "J/(mol*K)"))
+
+    cpdef double getHeatCapacity(self, double T) except -1000000000:
+        """
+        Return the constant-pressure heat capacity in J/mol*K at the
+        specified temperature `T` in K.
+        """
+        cdef double y
+        y = T / (T + self._B)
+        return self._Cp0 + (self._CpInf - self._Cp0) * y * y * (
+            1 + (y - 1) * (self.a0 + y * (self.a1 + y * (self.a2 + y * self.a3))) 
+        )
+            
+    cpdef double getEnthalpy(self, double T) except 1000000000:
+        """
+        Return the enthalpy in kJ/mol at the specified temperature `T` in K.
+        """
+        cdef double y, H
+        y = T / (T + self._B)
+        H = self._H0 + self._Cp0 * T - (self._CpInf-self._Cp0) * T * (
+            y * y * ((3 * self.a0 + self.a1 + self.a2 + self.a3) / 6. + 
+                (4 * self.a1 + self.a2 + self.a3) * y / 12. + 
+                (5 * self.a2 + self.a3) * y * y / 20. + 
+                self.a3 * y * y * y / 5.) + 
+            (2 + self.a0 + self.a1 + self.a2 + self.a3) * (y / 2. - 1 + (1.0 / y - 1.) * log(self._B + T))
+        )
+        return 0.001 * H
+    
+    cpdef double getEntropy(self, double T) except -1000000000:
+        """
+        Return the entropy in J/mol*K at the specified temperature `T` in K.
+        """
+        cdef double y, logT, logy
+        y = T / (T + self._B)
+        logT = log(T)
+        logy = log(y)
+        return self._S0 + self._CpInf * logT - (self._CpInf - self._Cp0) * (
+            logy + y * (1 + y * (self.a0 / 2. + y * (self.a1 / 3. + y * (self.a2 / 4. + y * self.a3 / 5.))))
+        )
+    
+    cpdef double getFreeEnergy(self, double T) except 1000000000:
+        """
+        Return the Gibbs free energy in kJ/mol at the specified temperature
+        `T` in K.
+        """
+        return self.getEnthalpy(T) - 0.001 * T * self.getEntropy(T)

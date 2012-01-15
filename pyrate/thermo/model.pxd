@@ -42,3 +42,18 @@ cdef class HeatCapacityModel:
     cpdef double getEntropy(self, double T) except -1000000000
 
     cpdef double getFreeEnergy(self, double T) except 1000000000
+
+################################################################################
+
+cdef class Wilhoit(HeatCapacityModel):
+    
+    cdef public _Cp0, _CpInf, _B, _H0, _S0
+    cdef public double a0, a1, a2, a3
+    
+    cpdef double getHeatCapacity(self, double T) except -1000000000
+
+    cpdef double getEnthalpy(self, double T) except 1000000000
+
+    cpdef double getEntropy(self, double T) except -1000000000
+
+    cpdef double getFreeEnergy(self, double T) except 1000000000
