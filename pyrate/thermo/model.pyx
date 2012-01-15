@@ -268,3 +268,88 @@ cdef class Wilhoit(HeatCapacityModel):
         `T` in K.
         """
         return self.getEnthalpy(T) - 0.001 * T * self.getEntropy(T)
+
+################################################################################
+
+cdef class NASA(HeatCapacityModel):
+    """
+    A thermodynamics model based on the NASA polynomial. Both the 
+    seven-coefficient and nine-coefficient variations are supported.
+    """
+    
+    def __init__(self, coeffs=None, Tmin=None, Tmax=None, comment=''):
+        HeatCapacityModel.__init__(self, Tmin=Tmin, Tmax=Tmax, comment=comment)
+        self.coeffs = coeffs
+        
+    def __repr__(self):
+        """
+        Return a string representation that can be used to reconstruct the
+        object.
+        """
+        string = 'NASA('
+        if self.cm2 == 0 and self.cm1 == 0:
+            string += 'coeffs=[{0:g},{1:g},{2:g},{3:g},{4:g},{5:g},{6:g}]'.format(self.c0, self.c1, self.c2, self.c3, self.c4, self.c5, self.c6)
+        else:
+            string += 'coeffs=[{0:g},{1:g},{2:g},{3:g},{4:g},{5:g},{6:g},{7:g},{8:g}]'.format(self.cm2, self.cm1, self.c0, self.c1, self.c2, self.c3, self.c4, self.c5, self.c6)
+        string += ', Tmin=({0:g},"{1}")'.format(float(self.Tmin), str(self.Tmin.dimensionality))
+        string += ', Tmax=({0:g},"{1}")'.format(float(self.Tmax), str(self.Tmax.dimensionality))
+        if self.comment != '': string += ', comment="""{0}"""'.format(self.comment)
+        string += ')'
+        return string
+
+    def __reduce__(self):
+        """
+        A helper function used when pickling an object.
+        """
+        return (NASA, ([self.cm2, self.cm1, self.c0, self.c1, self.c2, self.c3, self.c4, self.c5, self.c6], self.Tmin, self.Tmax, self.comment))
+
+    property coeffs:
+        """The set of seven or nine NASA polynomial coefficients."""
+        def __get__(self):
+            if self.cm2 == 0 and self.cm1 == 0:
+                return numpy.array([self.c0, self.c1, self.c2, self.c3, self.c4, self.c5, self.c6])
+            else:
+                return numpy.array([self.cm2, self.cm1, self.c0, self.c1, self.c2, self.c3, self.c4, self.c5, self.c6])
+        def __set__(self, value):
+            if value is None:
+                value = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            if len(value) == 7:
+                self.c0, self.c1, self.c2, self.c3, self.c4, self.c5, self.c6 = value
+                self.cm2 = 0; self.cm1 = 0
+            elif len(value) == 9:
+                self.cm2, self.cm1, self.c0, self.c1, self.c2, self.c3, self.c4, self.c5, self.c6 = value
+            else:
+                raise ValueError('Invalid number of NASA polynomial coefficients; should be 7 or 9.')
+    
+    cpdef double getHeatCapacity(self, double T) except -1000000000:
+        """
+        Return the constant-pressure heat capacity in J/mol*K at the
+        specified temperature `T` in K.
+        """
+        return ((self.cm2 / T + self.cm1) / T + self.c0 + T*(self.c1 + T*(self.c2 + T*(self.c3 + self.c4*T)))) * constants.R
+    
+    cpdef double getEnthalpy(self, double T) except 1000000000:
+        """
+        Return the enthalpy in kJ/mol at the specified temperature `T` in K.
+        """
+        cdef double T2 = T * T
+        cdef double T4 = T2 * T2
+        cdef double H
+        H = ((-self.cm2 / T + self.cm1 * log(T)) / T + self.c0 + self.c1*T/2. + self.c2*T2/3. + self.c3*T2*T/4. + self.c4*T4/5. + self.c5/T) * constants.R * T
+        return 0.001 * H
+    
+    cpdef double getEntropy(self, double T) except -1000000000:
+        """
+        Return the entropy in J/mol*K at the specified temperature `T` in K.
+        """
+        cdef double T2 = T * T
+        cdef double T4 = T2 * T2
+        return ((-self.cm2 / T / 2. - self.cm1) / T + self.c0*log(T) + self.c1*T + self.c2*T2/2. +
+            self.c3*T2*T/3. + self.c4*T4/4. + self.c6 ) * constants.R
+    
+    cpdef double getFreeEnergy(self, double T) except 1000000000:
+        """
+        Return the Gibbs free energy in kJ/mol at the specified temperature
+        `T` in K.
+        """
+        return self.getEnthalpy(T) - 0.001 * T * self.getEntropy(T)
