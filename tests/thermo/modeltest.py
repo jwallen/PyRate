@@ -432,5 +432,124 @@ class TestNASA(unittest.TestCase):
 
 ################################################################################
 
+class TestMultiNASA(unittest.TestCase):
+    """
+    Contains unit tests of the MultiNASA class.
+    """
+
+    def setUp(self):
+        """
+        A function run before each unit test in this class.
+        """
+        self.nasa0 = NASA(Tmin=300 * pq.K, Tmax=650.73 * pq.K, coeffs=[4.03055,-0.00214171,4.90611e-05,-5.99027e-08,2.38945e-11,-11257.6,3.5613], comment="""Low temperature range polynomial""")
+        self.nasa1 = NASA(Tmin=650.73 * pq.K, Tmax=3000 * pq.K, coeffs=[-0.307954,0.0245269,-1.2413e-05,3.07724e-09,-3.01467e-13,-10693,22.628], comment="""High temperature range polynomial""")
+        self.multiNASA = MultiNASA(
+            polynomials=[self.nasa0, self.nasa1],
+            Tmin = 300.0*pq.K, 
+            Tmax = 3000.0*pq.K, 
+            comment = "C2H6",
+        )
+    
+    def test_isTemperatureValid(self):
+        """
+        Test the MultiNASA.isTemperatureValid() method.
+        """
+        Tdata = numpy.array([200,400,600,800,1000,1200,1400,1600,1800,2000])
+        validdata = numpy.array([False,True,True,True,True,True,True,True,True,True], numpy.bool)
+        for T, valid in zip(Tdata, validdata):
+            valid0 = self.multiNASA.isTemperatureValid(T)
+            self.assertEqual(valid0, valid)
+        
+    def test_getHeatCapacity(self):
+        """
+        Test the MultiNASA.getHeatCapacity() method.
+        """
+        Tlist = numpy.array([400,600,800,1000,1200,1400,1600,1800,2000])
+        Cpexplist = numpy.array([7.80157, 10.5653, 12.8213, 14.5817, 15.9420, 16.9861, 17.78645, 18.4041, 18.8883]) * constants.R
+        for T, Cpexp in zip(Tlist, Cpexplist):
+            Cpact = self.multiNASA.getHeatCapacity(T)
+            self.assertAlmostEqual(Cpexp / Cpact, 1.0, 4, '{0} != {1}'.format(Cpexp, Cpact))
+        
+    def test_getEnthalpy(self):
+        """
+        Test the MultiNASA.getEnthalpy() method.
+        """
+        Tlist = numpy.array([400,600,800,1000,1200,1400,1600,1800,2000])
+        Hexplist = numpy.array([-22.7613, -12.1027, -6.14236, -2.16615, 0.743456, 2.99256, 4.79397, 6.27334, 7.51156]) * 0.001 * constants.R * Tlist
+        for T, Hexp in zip(Tlist, Hexplist):
+            Hact = self.multiNASA.getEnthalpy(T)
+            self.assertAlmostEqual(Hexp / Hact, 1.0, 3, '{0} != {1}'.format(Hexp, Hact))
+        
+    def test_getEntropy(self):
+        """
+        Test the MultiNASA.getEntropy() method.
+        """
+        Tlist = numpy.array([400,600,800,1000,1200,1400,1600,1800,2000])
+        Sexplist = numpy.array([29.6534, 33.3516, 36.7131, 39.7715, 42.5557, 45.0952, 47.4179, 49.5501, 51.5152]) * constants.R
+        for T, Sexp in zip(Tlist, Sexplist):
+            Sact = self.multiNASA.getEntropy(T)
+            self.assertAlmostEqual(Sexp / Sact, 1.0, 4, '{0} != {1}'.format(Sexp, Sact))
+
+    def test_getFreeEnergy(self):
+        """
+        Test the MultiNASA.getFreeEnergy() method.
+        """
+        Tlist = numpy.array([400,600,800,1000,1200,1400,1600,1800,2000])
+        for T in Tlist:
+            Gexp = self.multiNASA.getEnthalpy(T) - 0.001 * T * self.multiNASA.getEntropy(T)
+            Gact = self.multiNASA.getFreeEnergy(T)
+            self.assertAlmostEqual(Gexp / Gact, 1.0, 4, '{0} != {1}'.format(Gexp, Gact))
+    
+    def test_pickle(self):
+        """
+        Test that a MultiNASA object can be successfully pickled and unpickled
+        with no loss of information.
+        """
+        import cPickle
+        multiNASA = cPickle.loads(cPickle.dumps(self.multiNASA))
+        self.assertEqual(len(self.multiNASA.polynomials), len(multiNASA.polynomials))
+        for poly0, poly in zip(self.multiNASA.polynomials, multiNASA.polynomials):
+            self.assertEqual(poly0.cm2, poly.cm2)
+            self.assertEqual(poly0.cm1, poly.cm1)
+            self.assertEqual(poly0.c0, poly.c0)
+            self.assertEqual(poly0.c1, poly.c1)
+            self.assertEqual(poly0.c2, poly.c2)
+            self.assertEqual(poly0.c3, poly.c3)
+            self.assertEqual(poly0.c4, poly.c4)
+            self.assertEqual(poly0.c5, poly.c5)
+            self.assertEqual(poly0.c6, poly.c6)
+            self.assertEqual(poly0.Tmin, poly.Tmin)
+            self.assertEqual(poly0.Tmax, poly.Tmax)
+            self.assertEqual(poly0.comment, poly.comment)
+        self.assertEqual(self.multiNASA.Tmin, multiNASA.Tmin)
+        self.assertEqual(self.multiNASA.Tmax, multiNASA.Tmax)
+        self.assertEqual(self.multiNASA.comment, multiNASA.comment)
+
+    def test_repr(self):
+        """
+        Test that a MultiNASA object can be successfully reconstructed from its
+        repr() output with no loss of information.
+        """
+        exec('multiNASA = {0!r}'.format(self.multiNASA))
+        self.assertEqual(len(self.multiNASA.polynomials), len(multiNASA.polynomials))
+        for poly0, poly in zip(self.multiNASA.polynomials, multiNASA.polynomials):
+            self.assertEqual(poly0.cm2, poly.cm2)
+            self.assertEqual(poly0.cm1, poly.cm1)
+            self.assertEqual(poly0.c0, poly.c0)
+            self.assertEqual(poly0.c1, poly.c1)
+            self.assertEqual(poly0.c2, poly.c2)
+            self.assertEqual(poly0.c3, poly.c3)
+            self.assertEqual(poly0.c4, poly.c4)
+            self.assertEqual(poly0.c5, poly.c5)
+            self.assertEqual(poly0.c6, poly.c6)
+            self.assertEqual(poly0.Tmin, poly.Tmin)
+            self.assertEqual(poly0.Tmax, poly.Tmax)
+            self.assertEqual(poly0.comment, poly.comment)
+        self.assertEqual(self.multiNASA.Tmin, multiNASA.Tmin)
+        self.assertEqual(self.multiNASA.Tmax, multiNASA.Tmax)
+        self.assertEqual(self.multiNASA.comment, multiNASA.comment)
+
+################################################################################
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
