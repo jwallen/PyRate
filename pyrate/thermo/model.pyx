@@ -353,3 +353,69 @@ cdef class NASA(HeatCapacityModel):
         `T` in K.
         """
         return self.getEnthalpy(T) - 0.001 * T * self.getEntropy(T)
+
+################################################################################
+
+cdef class MultiNASA(HeatCapacityModel):
+    """
+    A set of thermodynamic parameters given by NASA polynomials. This class
+    stores a list of :class:`NASA` objects in the `polynomials`
+    attribute. When evaluating a thermodynamic quantity, a polynomial that
+    contains the desired temperature within its valid range will be used.
+    """
+    
+    def __init__(self, polynomials=None, Tmin=0.0, Tmax=0.0, comment=''):
+        HeatCapacityModel.__init__(self, Tmin=Tmin, Tmax=Tmax, comment=comment)
+        self.polynomials = polynomials or []
+    
+    def __repr__(self):
+        """
+        Return a string representation that can be used to reconstruct the
+        MultiNASA object.
+        """
+        string = 'MultiNASA('
+        string += 'Tmin=({0:g},"{1}"), '.format(float(self.Tmin), str(self.Tmin.dimensionality))
+        string += 'Tmax=({0:g},"{1}"), '.format(float(self.Tmax), str(self.Tmax.dimensionality))
+        string += 'polynomials=[{0}]'.format(','.join([repr(poly) for poly in self.polynomials]))
+        if self.comment != '': string += ', comment="""{0}"""'.format(self.comment)
+        string += ')'
+        return string
+
+    def __reduce__(self):
+        """
+        A helper function used when pickling a MultiNASA object.
+        """
+        return (MultiNASA, (self.polynomials, self.Tmin, self.Tmax, self.comment))
+
+    cpdef double getHeatCapacity(self, double T) except -1000000000:
+        """
+        Return the constant-pressure heat capacity in J/mol*K at the
+        specified temperature `T` in K.
+        """
+        return self.getPolynomialForTemperature(T).getHeatCapacity(T)
+    
+    cpdef double getEnthalpy(self, double T) except 1000000000:
+        """
+        Return the enthalpy in kJ/mol at the specified temperature `T` in K.
+        """
+        return self.getPolynomialForTemperature(T).getEnthalpy(T)
+    
+    cpdef double getEntropy(self, double T) except -1000000000:
+        """
+        Return the entropy in J/mol*K at the specified temperature `T` in K.
+        """
+        return self.getPolynomialForTemperature(T).getEntropy(T)
+    
+    cpdef double getFreeEnergy(self, double T) except 1000000000:
+        """
+        Return the Gibbs free energy in kJ/mol at the specified temperature
+        `T` in K.
+        """
+        return self.getPolynomialForTemperature(T).getFreeEnergy(T)
+    
+    cpdef NASA getPolynomialForTemperature(self, double T):
+        cdef NASA poly
+        for poly in self.polynomials:
+            if poly.isTemperatureValid(T): return poly
+        else:
+            raise ValueError("No valid NASA polynomial found for T={0:g} K".format(T))
