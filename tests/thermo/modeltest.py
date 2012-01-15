@@ -242,5 +242,195 @@ class TestWilhoit(unittest.TestCase):
 
 ################################################################################
 
+class TestNASA(unittest.TestCase):
+    """
+    Contains unit tests of the NASA class.
+    """
+
+    def setUp(self):
+        """
+        A function run before each unit test in this class.
+        """
+        self.coeffs = [-0.307954,0.0245269,-1.2413e-05,3.07724e-09,-3.01467e-13,-10693,22.628]
+        self.Tmin = 650.73 * pq.K
+        self.Tmax = 3000.0 * pq.K
+        self.comment = "C2H6"
+        self.nasa = NASA(
+            coeffs = self.coeffs,
+            Tmin = self.Tmin, 
+            Tmax = self.Tmax, 
+            comment = self.comment,
+        )
+    
+    def test_c0(self):
+        """
+        Test that the NASA c0 property was properly set.
+        """
+        self.assertAlmostEqual(self.nasa.coeffs[0] / self.coeffs[0], 1.0, 6, '{0} != {1} within 6 places'.format(self.nasa.coeffs[0], self.coeffs[0]))
+        self.assertAlmostEqual(self.nasa.c0 / self.coeffs[0], 1.0, 6, '{0} != {1} within 6 places'.format(self.nasa.c0, self.coeffs[0]))
+    
+    def test_c1(self):
+        """
+        Test that the NASA c1 property was properly set.
+        """
+        self.assertAlmostEqual(self.nasa.coeffs[1] / self.coeffs[1], 1.0, 6, '{0} != {1} within 6 places'.format(self.nasa.coeffs[1], self.coeffs[1]))
+        self.assertAlmostEqual(self.nasa.c1 / self.coeffs[1], 1.0, 6, '{0} != {1} within 6 places'.format(self.nasa.c1, self.coeffs[1]))
+    
+    def test_c2(self):
+        """
+        Test that the NASA c2 property was properly set.
+        """
+        self.assertAlmostEqual(self.nasa.coeffs[2] / self.coeffs[2], 1.0, 6, '{0} != {1} within 6 places'.format(self.nasa.coeffs[2], self.coeffs[2]))
+        self.assertAlmostEqual(self.nasa.c2 / self.coeffs[2], 1.0, 6, '{0} != {1} within 6 places'.format(self.nasa.c2, self.coeffs[2]))
+    
+    def test_c3(self):
+        """
+        Test that the NASA c3 property was properly set.
+        """
+        self.assertAlmostEqual(self.nasa.coeffs[3] / self.coeffs[3], 1.0, 6, '{0} != {1} within 6 places'.format(self.nasa.coeffs[3], self.coeffs[3]))
+        self.assertAlmostEqual(self.nasa.c3 / self.coeffs[3], 1.0, 6, '{0} != {1} within 6 places'.format(self.nasa.c3, self.coeffs[3]))
+    
+    def test_c4(self):
+        """
+        Test that the NASA c4 property was properly set.
+        """
+        self.assertAlmostEqual(self.nasa.coeffs[4] / self.coeffs[4], 1.0, 6, '{0} != {1} within 6 places'.format(self.nasa.coeffs[4], self.coeffs[4]))
+        self.assertAlmostEqual(self.nasa.c4 / self.coeffs[4], 1.0, 6, '{0} != {1} within 6 places'.format(self.nasa.c4, self.coeffs[4]))
+    
+    def test_c5(self):
+        """
+        Test that the NASA c5 property was properly set.
+        """
+        self.assertAlmostEqual(self.nasa.coeffs[5] / self.coeffs[5], 1.0, 6, '{0} != {1} within 6 places'.format(self.nasa.coeffs[5], self.coeffs[5]))
+        self.assertAlmostEqual(self.nasa.c5 / self.coeffs[5], 1.0, 6, '{0} != {1} within 6 places'.format(self.nasa.c5, self.coeffs[5]))
+    
+    def test_c6(self):
+        """
+        Test that the NASA c6 property was properly set.
+        """
+        self.assertAlmostEqual(self.nasa.coeffs[6] / self.coeffs[6], 1.0, 6, '{0} != {1} within 6 places'.format(self.nasa.coeffs[6], self.coeffs[6]))
+        self.assertAlmostEqual(self.nasa.c6 / self.coeffs[6], 1.0, 6, '{0} != {1} within 6 places'.format(self.nasa.c6, self.coeffs[6]))
+    
+    def test_cm1(self):
+        """
+        Test that the NASA cm1 property was properly set.
+        """
+        self.assertEqual(self.nasa.cm1, 0, '{0} != {1}'.format(self.nasa.cm1, 0))
+    
+    def test_cm2(self):
+        """
+        Test that the NASA cm2 property was properly set.
+        """
+        self.assertEqual(self.nasa.cm2, 0, '{0} != {1}'.format(self.nasa.cm2, 0))
+    
+    def test_Tmin(self):
+        """
+        Test that the NASA Tmin property was properly set.
+        """
+        self.assertAlmostEqual(self.nasa.Tmin / self.Tmin, 1.0, 6, '{0} != {1} within 6 places'.format(self.nasa.Tmin, self.Tmin))
+    
+    def test_Tmax(self):
+        """
+        Test that the NASA Tmax property was properly set.
+        """
+        self.assertAlmostEqual(self.nasa.Tmax / self.Tmax, 1.0, 6, '{0} != {1} within 6 places'.format(self.nasa.Tmax, self.Tmax))
+    
+    def test_comment(self):
+        """
+        Test that the NASA comment property was properly set.
+        """
+        self.assertEqual(self.nasa.comment, self.comment)
+    
+    def test_isTemperatureValid(self):
+        """
+        Test the NASA.isTemperatureValid() method.
+        """
+        Tdata = numpy.array([200,400,600,800,1000,1200,1400,1600,1800,2000])
+        validdata = numpy.array([False,False,False,True,True,True,True,True,True,True], numpy.bool)
+        for T, valid in zip(Tdata, validdata):
+            valid0 = self.nasa.isTemperatureValid(T)
+            self.assertEqual(valid0, valid)
+        
+    def test_getHeatCapacity(self):
+        """
+        Test the NASA.getHeatCapacity() method.
+        """
+        Tlist = numpy.array([800,1000,1200,1400,1600,1800,2000])
+        Cpexplist = numpy.array([12.8213, 14.5817, 15.9420, 16.9861, 17.78645, 18.4041, 18.8883]) * constants.R
+        for T, Cpexp in zip(Tlist, Cpexplist):
+            Cpact = self.nasa.getHeatCapacity(T)
+            self.assertAlmostEqual(Cpexp / Cpact, 1.0, 4, '{0} != {1}'.format(Cpexp, Cpact))
+        
+    def test_getEnthalpy(self):
+        """
+        Test the NASA.getEnthalpy() method.
+        """
+        Tlist = numpy.array([800,1000,1200,1400,1600,1800,2000])
+        Hexplist = numpy.array([-6.14236, -2.16615, 0.743456, 2.99256, 4.79397, 6.27334, 7.51156]) * 0.001 * constants.R * Tlist
+        for T, Hexp in zip(Tlist, Hexplist):
+            Hact = self.nasa.getEnthalpy(T)
+            self.assertAlmostEqual(Hexp / Hact, 1.0, 3, '{0} != {1}'.format(Hexp, Hact))
+        
+    def test_getEntropy(self):
+        """
+        Test the NASA.getEntropy() method.
+        """
+        Tlist = numpy.array([800,1000,1200,1400,1600,1800,2000])
+        Sexplist = numpy.array([36.7131, 39.7715, 42.5557, 45.0952, 47.4179, 49.5501, 51.5152]) * constants.R
+        for T, Sexp in zip(Tlist, Sexplist):
+            Sact = self.nasa.getEntropy(T)
+            self.assertAlmostEqual(Sexp / Sact, 1.0, 4, '{0} != {1}'.format(Sexp, Sact))
+
+    def test_getFreeEnergy(self):
+        """
+        Test the NASA.getFreeEnergy() method.
+        """
+        Tlist = numpy.array([800,1000,1200,1400,1600,1800,2000])
+        for T in Tlist:
+            Gexp = self.nasa.getEnthalpy(T) - 0.001 * T * self.nasa.getEntropy(T)
+            Gact = self.nasa.getFreeEnergy(T)
+            self.assertAlmostEqual(Gexp / Gact, 1.0, 4, '{0} != {1}'.format(Gexp, Gact))
+    
+    def test_pickle(self):
+        """
+        Test that a NASA object can be successfully pickled and
+        unpickled with no loss of information.
+        """
+        import cPickle
+        nasa = cPickle.loads(cPickle.dumps(self.nasa))
+        self.assertAlmostEqual(self.nasa.cm2, nasa.cm2, 4)
+        self.assertAlmostEqual(self.nasa.cm1, nasa.cm1, 4)
+        self.assertAlmostEqual(self.nasa.c0 / nasa.c0, 1.0, 4)
+        self.assertAlmostEqual(self.nasa.c1 / nasa.c1, 1.0, 4)
+        self.assertAlmostEqual(self.nasa.c2 / nasa.c2, 1.0, 4)
+        self.assertAlmostEqual(self.nasa.c3 / nasa.c3, 1.0, 4)
+        self.assertAlmostEqual(self.nasa.c4 / nasa.c4, 1.0, 4)
+        self.assertAlmostEqual(self.nasa.c5 / nasa.c5, 1.0, 4)
+        self.assertAlmostEqual(self.nasa.c6 / nasa.c6, 1.0, 4)
+        self.assertEqual(self.nasa.Tmin, nasa.Tmin)
+        self.assertEqual(self.nasa.Tmax, nasa.Tmax)
+        self.assertEqual(self.nasa.comment, nasa.comment)
+
+    def test_repr(self):
+        """
+        Test that a NASA object can be successfully reconstructed from its
+        repr() output with no loss of information.
+        """
+        exec('nasa = {0!r}'.format(self.nasa))
+        self.assertAlmostEqual(self.nasa.cm2, nasa.cm2, 4)
+        self.assertAlmostEqual(self.nasa.cm1, nasa.cm1, 4)
+        self.assertAlmostEqual(self.nasa.c0 / nasa.c0, 1.0, 4)
+        self.assertAlmostEqual(self.nasa.c1 / nasa.c1, 1.0, 4)
+        self.assertAlmostEqual(self.nasa.c2 / nasa.c2, 1.0, 4)
+        self.assertAlmostEqual(self.nasa.c3 / nasa.c3, 1.0, 4)
+        self.assertAlmostEqual(self.nasa.c4 / nasa.c4, 1.0, 4)
+        self.assertAlmostEqual(self.nasa.c5 / nasa.c5, 1.0, 4)
+        self.assertAlmostEqual(self.nasa.c6 / nasa.c6, 1.0, 4)
+        self.assertEqual(self.nasa.Tmin, nasa.Tmin)
+        self.assertEqual(self.nasa.Tmax, nasa.Tmax)
+        self.assertEqual(self.nasa.comment, nasa.comment)
+
+################################################################################
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
