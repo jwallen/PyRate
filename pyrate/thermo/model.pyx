@@ -364,6 +364,172 @@ cdef class Wilhoit(HeatCapacityModel):
 
         return self
 
+    cdef double integral_T0(self, double T):
+        """
+        Return the value of the dimensionless integral
+        
+        .. math:: \\int \\frac{C_\\mathrm{p}^\\mathrm{Wilhoit}(T')}{R} \\ dT'
+        
+        evaluated at the given temperature `T` in kK. The implementation
+        differs from that given in the Yelvington thesis for enthalpy by a 
+        parameter-dependent (but temperature-independent) constant.
+        """
+        cdef double Cp0, CpInf, B, a0, a1, a2, a3
+        cdef double y, y2, logBplusT, result
+        Cp0, CpInf, B, a0, a1, a2, a3 = self._Cp0, self._CpInf, self._B, self.a0, self.a1, self.a2, self.a3
+        y = T / (T + B)
+        y2 = y * y
+        logBplusT = log(B + T)
+        result = Cp0*T - (CpInf-Cp0)*T*(y2*((3*a0 + a1 + a2 + a3)/6. + (4*a1 + a2 + a3)*y/12. + (5*a2 + a3)*y2/20. + a3*y2*y/5.) + (2 + a0 + a1 + a2 + a3)*( y/2. - 1 + (1/y-1)*logBplusT))
+        return result
+    
+    cdef double integral_TM1(self, double T):
+        """
+        Return the value of the dimensionless integral
+        
+        .. math:: \\int \\frac{C_\\mathrm{p}^\\mathrm{Wilhoit}(T')}{R} (T')^{-1} \\ dT'
+        
+        evaluated at the given temperature `T` in kK. The implementation
+        differs from that given in the Yelvington thesis for entropy by a 
+        parameter-dependent (but temperature-independent) constant.
+        """
+        cdef double Cp0, CpInf, B, a0, a1, a2, a3
+        cdef double y, logy, logT, result
+        Cp0, CpInf, B, a0, a1, a2, a3 = self._Cp0, self._CpInf, self._B, self.a0, self.a1, self.a2, self.a3
+        y = T / (T + B)
+        logy = log(y)
+        logT = log(T)
+        result = CpInf*logT-(CpInf-Cp0)*(logy+y*(1+y*(a0/2+y*(a1/3 + y*(a2/4 + y*a3/5)))))
+        return result
+    
+    cdef double integral_T1(self, double T):
+        """
+        Return the value of the dimensionless integral
+        
+        .. math:: \\int \\frac{C_\\mathrm{p}^\\mathrm{Wilhoit}(T')}{R} T' \\ dT'
+        
+        evaluated at the given temperature `T` in kK.
+        """
+        cdef double Cp0, CpInf, B, a0, a1, a2, a3
+        cdef double logBplusT, result
+        Cp0, CpInf, B, a0, a1, a2, a3 = self._Cp0, self._CpInf, self._B, self.a0, self.a1, self.a2, self.a3
+        logBplusT = log(B + T)
+        result = ( (2 + a0 + a1 + a2 + a3)*B*(Cp0 - CpInf)*T + (CpInf*T**2)/2. + (a3*B**7*(-Cp0 + CpInf))/(5.*(B + T)**5) + ((a2 + 6*a3)*B**6*(Cp0 - CpInf))/(4.*(B + T)**4) -
+            ((a1 + 5*(a2 + 3*a3))*B**5*(Cp0 - CpInf))/(3.*(B + T)**3) + ((a0 + 4*a1 + 10*(a2 + 2*a3))*B**4*(Cp0 - CpInf))/(2.*(B + T)**2) -
+            ((1 + 3*a0 + 6*a1 + 10*a2 + 15*a3)*B**3*(Cp0 - CpInf))/(B + T) - (3 + 3*a0 + 4*a1 + 5*a2 + 6*a3)*B**2*(Cp0 - CpInf)*logBplusT)
+        return result
+    
+    cdef double integral_T2(self, double T):
+        """
+        Return the value of the dimensionless integral
+        
+        .. math:: \\int \\frac{C_\\mathrm{p}^\\mathrm{Wilhoit}(T')}{R} (T')^2 \\ dT'
+        
+        evaluated at the given temperature `T` in kK.
+        """
+        cdef double Cp0, CpInf, B, a0, a1, a2, a3
+        cdef double logBplusT, result
+        Cp0, CpInf, B, a0, a1, a2, a3 = self._Cp0, self._CpInf, self._B, self.a0, self.a1, self.a2, self.a3
+        logBplusT = log(B + T)
+        result = ( -((3 + 3*a0 + 4*a1 + 5*a2 + 6*a3)*B**2*(Cp0 - CpInf)*T) + ((2 + a0 + a1 + a2 + a3)*B*(Cp0 - CpInf)*T**2)/2. + (CpInf*T**3)/3. + (a3*B**8*(Cp0 - CpInf))/(5.*(B + T)**5) -
+            ((a2 + 7*a3)*B**7*(Cp0 - CpInf))/(4.*(B + T)**4) + ((a1 + 6*a2 + 21*a3)*B**6*(Cp0 - CpInf))/(3.*(B + T)**3) - ((a0 + 5*(a1 + 3*a2 + 7*a3))*B**5*(Cp0 - CpInf))/(2.*(B + T)**2) +
+            ((1 + 4*a0 + 10*a1 + 20*a2 + 35*a3)*B**4*(Cp0 - CpInf))/(B + T) + (4 + 6*a0 + 10*a1 + 15*a2 + 21*a3)*B**3*(Cp0 - CpInf)*logBplusT)
+        return result
+    
+    cdef double integral_T3(self, double T):
+        """
+        Return the value of the dimensionless integral
+        
+        .. math:: \\int \\frac{C_\\mathrm{p}^\\mathrm{Wilhoit}(T')}{R} (T')^3 \\ dT'
+        
+        evaluated at the given temperature `T` in kK.
+        """
+        cdef double Cp0, CpInf, B, a0, a1, a2, a3
+        cdef double logBplusT, result
+        Cp0, CpInf, B, a0, a1, a2, a3 = self._Cp0, self._CpInf, self._B, self.a0, self.a1, self.a2, self.a3
+        logBplusT = log(B + T)
+        result = ( (4 + 6*a0 + 10*a1 + 15*a2 + 21*a3)*B**3*(Cp0 - CpInf)*T + ((3 + 3*a0 + 4*a1 + 5*a2 + 6*a3)*B**2*(-Cp0 + CpInf)*T**2)/2. + ((2 + a0 + a1 + a2 + a3)*B*(Cp0 - CpInf)*T**3)/3. +
+            (CpInf*T**4)/4. + (a3*B**9*(-Cp0 + CpInf))/(5.*(B + T)**5) + ((a2 + 8*a3)*B**8*(Cp0 - CpInf))/(4.*(B + T)**4) - ((a1 + 7*(a2 + 4*a3))*B**7*(Cp0 - CpInf))/(3.*(B + T)**3) +
+            ((a0 + 6*a1 + 21*a2 + 56*a3)*B**6*(Cp0 - CpInf))/(2.*(B + T)**2) - ((1 + 5*a0 + 15*a1 + 35*a2 + 70*a3)*B**5*(Cp0 - CpInf))/(B + T) -
+            (5 + 10*a0 + 20*a1 + 35*a2 + 56*a3)*B**4*(Cp0 - CpInf)*logBplusT)
+        return result
+    
+    cdef double integral_T4(self, double T):
+        """
+        Return the value of the dimensionless integral
+        
+        .. math:: \\int \\frac{C_\\mathrm{p}^\\mathrm{Wilhoit}(T')}{R} (T')^4 \\ dT'
+        
+        evaluated at the given temperature `T` in kK.
+        """
+        cdef double Cp0, CpInf, B, a0, a1, a2, a3
+        cdef double logBplusT, result
+        Cp0, CpInf, B, a0, a1, a2, a3 = self._Cp0, self._CpInf, self._B, self.a0, self.a1, self.a2, self.a3
+        logBplusT = log(B + T)
+        result = ( -((5 + 10*a0 + 20*a1 + 35*a2 + 56*a3)*B**4*(Cp0 - CpInf)*T) + ((4 + 6*a0 + 10*a1 + 15*a2 + 21*a3)*B**3*(Cp0 - CpInf)*T**2)/2. +
+            ((3 + 3*a0 + 4*a1 + 5*a2 + 6*a3)*B**2*(-Cp0 + CpInf)*T**3)/3. + ((2 + a0 + a1 + a2 + a3)*B*(Cp0 - CpInf)*T**4)/4. + (CpInf*T**5)/5. + (a3*B**10*(Cp0 - CpInf))/(5.*(B + T)**5) -
+            ((a2 + 9*a3)*B**9*(Cp0 - CpInf))/(4.*(B + T)**4) + ((a1 + 8*a2 + 36*a3)*B**8*(Cp0 - CpInf))/(3.*(B + T)**3) - ((a0 + 7*(a1 + 4*(a2 + 3*a3)))*B**7*(Cp0 - CpInf))/(2.*(B + T)**2) +
+            ((1 + 6*a0 + 21*a1 + 56*a2 + 126*a3)*B**6*(Cp0 - CpInf))/(B + T) + (6 + 15*a0 + 35*a1 + 70*a2 + 126*a3)*B**5*(Cp0 - CpInf)*logBplusT)
+        return result
+    
+    cdef double integral2_T0(self, double T):
+        """
+        Return the value of the dimensionless integral
+        
+        .. math:: \\int \\left[ \\frac{C_\\mathrm{p}^\\mathrm{Wilhoit}(T')}{R} \\right]^2 \\ dT'
+        
+        evaluated at the given temperature `T` in kK.
+        """
+        cdef double Cp0, CpInf, B, a0, a1, a2, a3
+        cdef double logBplusT, result
+        Cp0, CpInf, B, a0, a1, a2, a3 = self._Cp0, self._CpInf, self._B, self.a0, self.a1, self.a2, self.a3
+        logBplusT = log(B + T)
+        result = (CpInf**2*T - (a3**2*B**12*(Cp0 - CpInf)**2)/(11.*(B + T)**11) + (a3*(a2 + 5*a3)*B**11*(Cp0 - CpInf)**2)/(5.*(B + T)**10) -
+            ((a2**2 + 18*a2*a3 + a3*(2*a1 + 45*a3))*B**10*(Cp0 - CpInf)**2)/(9.*(B + T)**9) + ((4*a2**2 + 36*a2*a3 + a1*(a2 + 8*a3) + a3*(a0 + 60*a3))*B**9*(Cp0 - CpInf)**2)/(4.*(B + T)**8) -
+            ((a1**2 + 14*a1*(a2 + 4*a3) + 2*(14*a2**2 + a3 + 84*a2*a3 + 105*a3**2 + a0*(a2 + 7*a3)))*B**8*(Cp0 - CpInf)**2)/(7.*(B + T)**7) +
+            ((3*a1**2 + a2 + 28*a2**2 + 7*a3 + 126*a2*a3 + 126*a3**2 + 7*a1*(3*a2 + 8*a3) + a0*(a1 + 6*a2 + 21*a3))*B**7*(Cp0 - CpInf)**2)/(3.*(B + T)**6) -
+            (B**6*(Cp0 - CpInf)*(a0**2*(Cp0 - CpInf) + 15*a1**2*(Cp0 - CpInf) + 10*a0*(a1 + 3*a2 + 7*a3)*(Cp0 - CpInf) + 2*a1*(1 + 35*a2 + 70*a3)*(Cp0 - CpInf) +
+             2*(35*a2**2*(Cp0 - CpInf) + 6*a2*(1 + 21*a3)*(Cp0 - CpInf) + a3*(5*(4 + 21*a3)*Cp0 - 21*(CpInf + 5*a3*CpInf)))))/(5.*(B + T)**5) +
+            (B**5*(Cp0 - CpInf)*(14*a2*Cp0 + 28*a2**2*Cp0 + 30*a3*Cp0 + 84*a2*a3*Cp0 + 60*a3**2*Cp0 + 2*a0**2*(Cp0 - CpInf) + 10*a1**2*(Cp0 - CpInf) +
+             a0*(1 + 10*a1 + 20*a2 + 35*a3)*(Cp0 - CpInf) + a1*(5 + 35*a2 + 56*a3)*(Cp0 - CpInf) - 15*a2*CpInf - 28*a2**2*CpInf - 35*a3*CpInf - 84*a2*a3*CpInf - 60*a3**2*CpInf))/
+             (2.*(B + T)**4) - (B**4*(Cp0 - CpInf)*((1 + 6*a0**2 + 15*a1**2 + 32*a2 + 28*a2**2 + 50*a3 + 72*a2*a3 + 45*a3**2 + 2*a1*(9 + 21*a2 + 28*a3) + a0*(8 + 20*a1 + 30*a2 + 42*a3))*Cp0 -
+             (1 + 6*a0**2 + 15*a1**2 + 40*a2 + 28*a2**2 + 70*a3 + 72*a2*a3 + 45*a3**2 + a0*(8 + 20*a1 + 30*a2 + 42*a3) + a1*(20 + 42*a2 + 56*a3))*CpInf))/(3.*(B + T)**3) +
+            (B**3*(Cp0 - CpInf)*((2 + 2*a0**2 + 3*a1**2 + 9*a2 + 4*a2**2 + 11*a3 + 9*a2*a3 + 5*a3**2 + a0*(5 + 5*a1 + 6*a2 + 7*a3) + a1*(7 + 7*a2 + 8*a3))*Cp0 -
+             (2 + 2*a0**2 + 3*a1**2 + 15*a2 + 4*a2**2 + 21*a3 + 9*a2*a3 + 5*a3**2 + a0*(6 + 5*a1 + 6*a2 + 7*a3) + a1*(10 + 7*a2 + 8*a3))*CpInf))/(B + T)**2 -
+            (B**2*((2 + a0 + a1 + a2 + a3)**2*Cp0**2 - 2*(5 + a0**2 + a1**2 + 8*a2 + a2**2 + 9*a3 + 2*a2*a3 + a3**2 + 2*a0*(3 + a1 + a2 + a3) + a1*(7 + 2*a2 + 2*a3))*Cp0*CpInf +
+             (6 + a0**2 + a1**2 + 12*a2 + a2**2 + 14*a3 + 2*a2*a3 + a3**2 + 2*a1*(5 + a2 + a3) + 2*a0*(4 + a1 + a2 + a3))*CpInf**2))/(B + T) +
+            2*(2 + a0 + a1 + a2 + a3)*B*(Cp0 - CpInf)*CpInf*logBplusT)
+        return result
+    
+    cdef double integral2_TM1(self, double T):
+        """
+        Return the value of the dimensionless integral
+        
+        .. math:: \\int \\left[ \\frac{C_\\mathrm{p}^\\mathrm{Wilhoit}(T')}{R} \\right]^2 (T')^{-1} \\ dT'
+        
+        evaluated at the given temperature `T` in kK.
+        """
+        cdef double Cp0, CpInf, B, a0, a1, a2, a3
+        cdef double logBplusT, result
+        Cp0, CpInf, B, a0, a1, a2, a3 = self._Cp0, self._CpInf, self._B, self.a0, self.a1, self.a2, self.a3
+        logBplusT = log(B + T); logT = log(T)
+        result = ( (a3**2*B**11*(Cp0 - CpInf)**2)/(11.*(B + T)**11) - (a3*(2*a2 + 9*a3)*B**10*(Cp0 - CpInf)**2)/(10.*(B + T)**10) +
+            ((a2**2 + 16*a2*a3 + 2*a3*(a1 + 18*a3))*B**9*(Cp0 - CpInf)**2)/(9.*(B + T)**9) -
+            ((7*a2**2 + 56*a2*a3 + 2*a1*(a2 + 7*a3) + 2*a3*(a0 + 42*a3))*B**8*(Cp0 - CpInf)**2)/(8.*(B + T)**8) +
+            ((a1**2 + 21*a2**2 + 2*a3 + 112*a2*a3 + 126*a3**2 + 2*a0*(a2 + 6*a3) + 6*a1*(2*a2 + 7*a3))*B**7*(Cp0 - CpInf)**2)/(7.*(B + T)**7) -
+            ((5*a1**2 + 2*a2 + 30*a1*a2 + 35*a2**2 + 12*a3 + 70*a1*a3 + 140*a2*a3 + 126*a3**2 + 2*a0*(a1 + 5*(a2 + 3*a3)))*B**6*(Cp0 - CpInf)**2)/(6.*(B + T)**6) +
+            (B**5*(Cp0 - CpInf)*(10*a2*Cp0 + 35*a2**2*Cp0 + 28*a3*Cp0 + 112*a2*a3*Cp0 + 84*a3**2*Cp0 + a0**2*(Cp0 - CpInf) + 10*a1**2*(Cp0 - CpInf) + 2*a1*(1 + 20*a2 + 35*a3)*(Cp0 - CpInf) +
+            4*a0*(2*a1 + 5*(a2 + 2*a3))*(Cp0 - CpInf) - 10*a2*CpInf - 35*a2**2*CpInf - 30*a3*CpInf - 112*a2*a3*CpInf - 84*a3**2*CpInf))/(5.*(B + T)**5) -
+            (B**4*(Cp0 - CpInf)*(18*a2*Cp0 + 21*a2**2*Cp0 + 32*a3*Cp0 + 56*a2*a3*Cp0 + 36*a3**2*Cp0 + 3*a0**2*(Cp0 - CpInf) + 10*a1**2*(Cp0 - CpInf) +
+            2*a0*(1 + 6*a1 + 10*a2 + 15*a3)*(Cp0 - CpInf) + 2*a1*(4 + 15*a2 + 21*a3)*(Cp0 - CpInf) - 20*a2*CpInf - 21*a2**2*CpInf - 40*a3*CpInf - 56*a2*a3*CpInf - 36*a3**2*CpInf))/
+            (4.*(B + T)**4) + (B**3*(Cp0 - CpInf)*((1 + 3*a0**2 + 5*a1**2 + 14*a2 + 7*a2**2 + 18*a3 + 16*a2*a3 + 9*a3**2 + 2*a0*(3 + 4*a1 + 5*a2 + 6*a3) + 2*a1*(5 + 6*a2 + 7*a3))*Cp0 -
+            (1 + 3*a0**2 + 5*a1**2 + 20*a2 + 7*a2**2 + 30*a3 + 16*a2*a3 + 9*a3**2 + 2*a0*(3 + 4*a1 + 5*a2 + 6*a3) + 2*a1*(6 + 6*a2 + 7*a3))*CpInf))/(3.*(B + T)**3) -
+            (B**2*((3 + a0**2 + a1**2 + 4*a2 + a2**2 + 4*a3 + 2*a2*a3 + a3**2 + 2*a1*(2 + a2 + a3) + 2*a0*(2 + a1 + a2 + a3))*Cp0**2 -
+            2*(3 + a0**2 + a1**2 + 7*a2 + a2**2 + 8*a3 + 2*a2*a3 + a3**2 + 2*a1*(3 + a2 + a3) + a0*(5 + 2*a1 + 2*a2 + 2*a3))*Cp0*CpInf +
+            (3 + a0**2 + a1**2 + 10*a2 + a2**2 + 12*a3 + 2*a2*a3 + a3**2 + 2*a1*(4 + a2 + a3) + 2*a0*(3 + a1 + a2 + a3))*CpInf**2))/(2.*(B + T)**2) +
+            (B*(Cp0 - CpInf)*(Cp0 - (3 + 2*a0 + 2*a1 + 2*a2 + 2*a3)*CpInf))/(B + T) + Cp0**2*logT + (-Cp0**2 + CpInf**2)*logBplusT)
+        return result
+
 ################################################################################
 
 cdef class NASA(HeatCapacityModel):
@@ -448,6 +614,52 @@ cdef class NASA(HeatCapacityModel):
         `T` in K.
         """
         return self.getEnthalpy(T) - 0.001 * T * self.getEntropy(T)
+    
+    cdef double integral2_T0(self, double T):
+        """
+        Return the value of the dimensionless integral
+        
+        .. math:: \\int \\left[ \\frac{C_\\mathrm{p}^\\mathrm{NASA}(T')}{R} \\right]^2 \\ dT'
+        
+        evaluated at the given temperature `T` in K.
+        """
+        cdef double c0, c1, c2, c3, c4
+        cdef double T2, T4, T8, result
+        c0, c1, c2, c3, c4 = self.c0, self.c1, self.c2, self.c3, self.c4
+        T2 = T * T
+        T4 = T2 * T2
+        T8 = T4 * T4
+        result = (
+            c0*c0*T + c0*c1*T2 + 2./3.*c0*c2*T2*T + 0.5*c0*c3*T4 + 0.4*c0*c4*T4*T +
+            c1*c1*T2*T/3. + 0.5*c1*c2*T4 + 0.4*c1*c3*T4*T + c1*c4*T4*T2/3. +
+            0.2*c2*c2*T4*T + c2*c3*T4*T2/3. + 2./7.*c2*c4*T4*T2*T +
+            c3*c3*T4*T2*T/7. + 0.25*c3*c4*T8 +
+            c4*c4*T8*T/9.
+        )
+        return result
+    
+    cdef double integral2_TM1(self, double T):
+        """
+        Return the value of the dimensionless integral
+        
+        .. math:: \\int \\left[ \\frac{C_\\mathrm{p}^\\mathrm{NASA}(T')}{R} \\right]^2 (T')^{-1} \\ dT'
+        
+        evaluated at the given temperature `T` in K.
+        """
+        cdef double c0, c1, c2, c3, c4
+        cdef double T2, T4, logT, result
+        c0, c1, c2, c3, c4 = self.c0, self.c1, self.c2, self.c3, self.c4
+        T2 = T * T
+        T4 = T2 * T2
+        logT = log(T)
+        result = (
+            c0*c0*logT + 2*c0*c1*T + c0*c2*T2 + 2./3.*c0*c3*T2*T + 0.5*c0*c4*T4 +
+            0.5*c1*c1*T2 + 2./3.*c1*c2*T2*T + 0.5*c1*c3*T4 + 0.4*c1*c4*T4*T +
+            0.25*c2*c2*T4 + 0.4*c2*c3*T4*T + c2*c4*T4*T2/3. +
+            c3*c3*T4*T2/6. + 2./7.*c3*c4*T4*T2*T +
+            c4*c4*T4*T4/8.
+        )
+        return result
 
 ################################################################################
 

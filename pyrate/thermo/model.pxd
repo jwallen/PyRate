@@ -58,6 +58,22 @@ cdef class Wilhoit(HeatCapacityModel):
 
     cpdef double getFreeEnergy(self, double T) except 1000000000
 
+    cdef double integral_T0(self, double T)
+    
+    cdef double integral_TM1(self, double T)
+    
+    cdef double integral_T1(self, double T)
+    
+    cdef double integral_T2(self, double T)
+    
+    cdef double integral_T3(self, double T)
+    
+    cdef double integral_T4(self, double T)
+    
+    cdef double integral2_T0(self, double T)
+    
+    cdef double integral2_TM1(self, double T)
+
 ################################################################################
 
 cdef class NASA(HeatCapacityModel):
@@ -71,6 +87,10 @@ cdef class NASA(HeatCapacityModel):
     cpdef double getEntropy(self, double T) except -1000000000
 
     cpdef double getFreeEnergy(self, double T) except 1000000000
+
+    cdef double integral2_T0(self, double T)
+    
+    cdef double integral2_TM1(self, double T)
 
 ################################################################################
 
