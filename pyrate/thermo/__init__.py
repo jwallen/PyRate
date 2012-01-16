@@ -28,3 +28,6 @@
 #   DEALINGS IN THE SOFTWARE. 
 #
 ################################################################################
+
+from .model import Wilhoit, NASA, MultiNASA
+from .converter import convertWilhoitToMultiNASA, convertMultiNASAToWilhoit
