@@ -239,6 +239,34 @@ class TestWilhoit(unittest.TestCase):
         self.assertEqual(self.wilhoit.Tmin, wilhoit.Tmin)
         self.assertEqual(self.wilhoit.Tmax, wilhoit.Tmax)
         self.assertEqual(self.wilhoit.comment, wilhoit.comment)
+    
+    def test_fitToData(self):
+        """
+        Test the Wilhoit.fitToData() method.
+        """
+        # This data is for ethane
+        H298 = -19.521 * 4.184
+        S298 = 54.799 * 4.184
+        Tdata = numpy.array([300.,400.,500.,600.,800.,1000.,1500.])
+        Cpdata = numpy.array([12.684, 15.506, 18.326, 20.971, 25.500, 29.016, 34.595]) * 4.184
+        linear = False
+        Nfreq = 17
+        Nrotors = 1
+        # Fit the Wilhoit polynomial to the data
+        wilhoit = Wilhoit().fitToData(Tdata, Cpdata, linear, Nfreq, Nrotors, H298, S298)
+        # Check that the fit reproduces the input data
+        for T, Cp in zip(Tdata, Cpdata):
+            Cp0 = wilhoit.getHeatCapacity(T)
+            self.assertAlmostEqual(Cp0 / Cp, 1.0, 3, '{0} != {1} within 3 places'.format(Cp0, Cp))
+        H = wilhoit.getEnthalpy(298)
+        self.assertAlmostEqual(H / H298, 1.0, 3, '{0} != {1} within 3 places'.format(H, H298))
+        S = wilhoit.getEntropy(298)
+        self.assertAlmostEqual(S / S298, 1.0, 3, '{0} != {1} within 3 places'.format(S, S298))
+        # Check that we get the appropriate limits at zero and infinite temperature
+        Cp0 = 4.0 * constants.R * pq.J / pq.mol / pq.K
+        self.assertAlmostEqual(wilhoit.Cp0 / Cp0, 1.0, 3, '{0} != {1} within 3 places'.format(wilhoit.Cp0, Cp0))
+        CpInf = 21.5 * constants.R * pq.J / pq.mol / pq.K
+        self.assertAlmostEqual(wilhoit.CpInf / CpInf, 1.0, 3, '{0} != {1} within 3 places'.format(wilhoit.CpInf, CpInf))
 
 ################################################################################
 
