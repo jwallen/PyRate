@@ -8,3 +8,4 @@ PyRate Reference Manual
     
     basic/index
     statmech/index
+    thermo/index
