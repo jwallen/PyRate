@@ -50,3 +50,18 @@ cdef class KineticsModel:
     cpdef bint isPressureDependent(self) except -2
 
     cpdef double getRateCoefficient(self, double T, double P=?) except -1
+
+################################################################################
+
+cdef class Arrhenius(KineticsModel):
+    
+    cdef double _A, _Ea, _T0
+    cdef public double n
+    
+    cpdef bint isPressureDependent(self) except -2
+
+    cpdef double getRateCoefficient(self, double T, double P=?) except -1
+
+    cpdef changeT0(self, double T0)
+
+    cpdef fitToData(self, numpy.ndarray Tlist, numpy.ndarray klist, kunits, double T0=?, numpy.ndarray weights=?, bint threeParams=?)

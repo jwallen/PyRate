@@ -205,3 +205,161 @@ cdef class KineticsModel:
         bar. This method must be overloaded in the derived class.
         """
         raise NotImplementedError('Unexpected call to KineticsModel.getRateCoefficient(); you should be using a class derived from KineticsModel that overrides this method.')
+
+################################################################################
+
+cdef class Arrhenius(KineticsModel):
+    """
+    A kinetics model based on the (modified) Arrhenius equation. The attributes
+    are:
+
+    =========== ================================================================
+    Attribute   Description
+    =========== ================================================================
+    `A`         The preexponential factor
+    `T0`        The reference temperature
+    `n`         The temperature exponent
+    `Ea`        The activation energy
+    =========== ================================================================
+    
+    """
+    
+    def __init__(self, A=0.0, n=0.0, Ea=0.0, T0=(1.0,"K"), Tmin=None, Tmax=None, order=-1, comment=''):
+        KineticsModel.__init__(self, Tmin=Tmin, Tmax=Tmax, order=order, comment=comment)
+        self.A = A
+        self.n = n
+        self.Ea = Ea
+        self.T0 = T0
+        
+    def __repr__(self):
+        """
+        Return a string representation that can be used to reconstruct the
+        Arrhenius object.
+        """
+        A = '({0:g},"{1}")'.format(float(self.A), str(self.A.dimensionality))
+        Ea = '({0:g},"{1}")'.format(float(self.Ea), str(self.Ea.dimensionality))
+        T0 = '({0:g},"{1}")'.format(float(self.T0), str(self.T0.dimensionality))
+        string = 'Arrhenius(A={0}, n={1:g}, Ea={2}, T0={3}'.format(A, self.n, Ea, T0)
+        if self.Tmin != 0.0: string += ', Tmin=({0:g},"{1}")'.format(float(self.Tmin), str(self.Tmin.dimensionality))
+        if self.Tmax != 0.0: string += ', Tmax=({0:g},"{1}")'.format(float(self.Tmax), str(self.Tmax.dimensionality))
+        if self.comment != '': string += ', comment="""{0}"""'.format(self.comment)
+        string += ')'
+        return string
+
+    def __reduce__(self):
+        """
+        A helper function used when pickling an Arrhenius object.
+        """
+        return (Arrhenius, (self.A, self.n, self.Ea, self.T0, self.Tmin, self.Tmax, self.order, self.comment))
+
+    property A:
+        """The preexponential factor."""
+        def __get__(self):
+            kunits = getRateCoefficientUnitsFromReactionOrder(self.order)
+            return pq.Quantity(self._A, kunits)
+        def __set__(self, value):
+            if value is None or value == 0:
+                self._A = 0.0 
+            else:
+                if isinstance(value, tuple):
+                    value = pq.Quantity(value[0], value[1])
+                # Try to determine reaction order from units of value
+                order = getReactionOrderFromRateCoefficientUnits(value.units)
+                # If the kinetics already has a specified reaction order,
+                # make sure the units of A are consistent with that order
+                if self.order != -1 and self.order != order:
+                    raise ValueError('Units of preexponential factor "{0}" with reaction order {1:d} do not match internal reaction order {2:d}.'.format(str(value.units.dimensionality), order, self.order))
+                self.order = order
+                kunits = getRateCoefficientUnitsFromReactionOrder(order)
+                self._A = float(units.convertRateCoefficient(value, kunits))
+
+    property T0:
+        """The reference temperature."""
+        def __get__(self):
+            return pq.Quantity(self._T0, pq.K)
+        def __set__(self, value):
+            if value is None or value == 0:
+                self._T0 = 0.0 
+            else:
+                self._T0 = float(units.convertTemperature(value, pq.K))
+
+    property Ea:
+        """The activation energy."""
+        def __get__(self):
+            return pq.Quantity(self._Ea * 0.001, "kJ/mol")
+        def __set__(self, value):
+            if value is None or value == 0:
+                self._Ea = 0.0 
+            else:
+                self._Ea = float(units.convertEnergy(value, "J/mol"))
+
+    cpdef bint isPressureDependent(self) except -2:
+        """
+        Return ``False`` since Arrhenius kinetics are not pressure-dependent.
+        """
+        return False
+
+    cpdef double getRateCoefficient(self, double T, double P=0.0) except -1:
+        """
+        Return the rate coefficient in the appropriate combination of cm^3, 
+        mol, and s at temperature `T` in K. 
+        """
+        return self._A * (T / self._T0)** self.n * exp(-self._Ea / (constants.R * T))
+
+    cpdef changeT0(self, double T0):
+        """
+        Changes the reference temperature used in the exponent to `T0` in K, 
+        and adjusts the preexponential factor accordingly.
+        """
+        self._A /= (self._T0 / T0)**self.n
+        self._T0 = T0
+
+    cpdef fitToData(self, numpy.ndarray Tlist, numpy.ndarray klist, kunits, double T0=1, numpy.ndarray weights=None, bint threeParams=True):
+        """
+        Fit the Arrhenius parameters to a set of rate coefficient data `klist`
+        in units of `kunits` corresponding to a set of temperatures `Tlist` in 
+        K. A linear least-squares fit is used, which guarantees that the 
+        resulting parameters provide the best possible approximation to the 
+        data.
+        """
+        import numpy.linalg
+        import scipy.stats
+        if threeParams:
+            A = numpy.zeros((len(Tlist),3), numpy.float64)
+            A[:,0] = numpy.ones_like(Tlist)
+            A[:,1] = numpy.log(Tlist / T0)
+            A[:,2] = -1.0 / constants.R / Tlist
+        else:
+            A = numpy.zeros((len(Tlist),2), numpy.float64)
+            A[:,0] = numpy.ones_like(Tlist)
+            A[:,1] = -1.0 / constants.R / Tlist
+        b = numpy.log(klist)
+        if weights is not None:
+            for n in range(b.size):
+                A[n,:] *= weights[n]
+                b[n] *= weights[n]
+        x, residues, rank, s = numpy.linalg.lstsq(A,b)
+        
+        # Determine covarianace matrix to obtain parameter uncertainties
+        count = klist.size
+        cov = residues[0] / (count - 3) * numpy.linalg.inv(numpy.dot(A.T, A))
+        t = scipy.stats.t.ppf(0.975, count - 3)
+            
+        if not threeParams:
+            x = numpy.array([x[0], 0, x[1]])
+            cov = numpy.array([[cov[0,0], 0, cov[0,1]], [0,0,0], [cov[1,0], 0, cov[1,1]]])
+        
+        self.A = (exp(x[0]), kunits)
+        self.n = x[1]
+        self.Ea = (x[2], "J/mol")
+        self.T0 = (T0, "K")
+        self.Tmin = (numpy.min(Tlist), "K")
+        self.Tmax = (numpy.max(Tlist), "K")
+        self.comment = 'Fitted to {0:d} data points; dA = *|/ {1:g}, dn = +|- {2:g}, dEa = +|- {3:g} kJ/mol'.format(
+            len(Tlist),
+            exp(sqrt(cov[0,0])),
+            sqrt(cov[1,1]),
+            sqrt(cov[2,2]) * 0.001,
+        )
+        
+        return self
