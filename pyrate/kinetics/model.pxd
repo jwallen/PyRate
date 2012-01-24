@@ -30,6 +30,12 @@ cimport numpy
 
 ################################################################################
 
+cpdef getRateCoefficientUnitsFromReactionOrder(order)
+
+cpdef getReactionOrderFromRateCoefficientUnits(kunits)
+
+################################################################################
+
 cdef class KineticsModel:
     
     cdef double _Tmin, _Tmax
