@@ -86,6 +86,7 @@ class test(Command):
 # The Cython extension modules to build
 ext_modules = [
     Extension('pyrate.constants', ['pyrate/constants.py']),
+    Extension('pyrate.kinetics.model', ['pyrate/kinetics/model.pyx']),
     Extension('pyrate.statmech.schrodinger', ['pyrate/statmech/schrodinger.pyx']),
     Extension('pyrate.statmech.translation', ['pyrate/statmech/translation.pyx']),
     Extension('pyrate.statmech.rotation', ['pyrate/statmech/rotation.pyx']),
