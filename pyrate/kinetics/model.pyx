@@ -363,3 +363,131 @@ cdef class Arrhenius(KineticsModel):
         )
         
         return self
+
+################################################################################
+
+cdef class PDepArrhenius(KineticsModel):
+    """
+    A kinetic model of a phenomenological rate coefficient :math:`k(T,P)` where
+    a set of Arrhenius kinetics are stored at a variety of pressures and
+    interpolated between on a logarithmic scale. The attributes are:
+
+    =============== ============================================================
+    Attribute       Description
+    =============== ============================================================
+    `pressures`     The list of pressures
+    `arrhenius`     The list of :class:`Arrhenius` objects at each pressure
+    =============== ============================================================
+    
+    """
+
+    def __init__(self, pressures=None, arrhenius=None, Tmin=None, Tmax=None, Pmin=None, Pmax=None, order=-1, comment=''):
+        KineticsModel.__init__(self, Tmin=Tmin, Tmax=Tmax, Pmin=Pmin, Pmax=Pmax, order=order, comment=comment)
+        self.pressures = pressures
+        self.arrhenius = arrhenius or []
+
+    def __repr__(self):
+        """
+        Return a string representation that can be used to reconstruct the
+        PDepArrhenius object.
+        """
+        pressures = '([{0}],"{1}")'.format(','.join(['{0:g}'.format(float(P)) for P in self.pressures]), str(self.pressures.dimensionality))
+        string = 'PDepArrhenius(pressures={0}, arrhenius={1!r}'.format(pressures, self.arrhenius)
+        if self.Tmin != 0.0: string += ', Tmin=({0:g},"{1}")'.format(float(self.Tmin), str(self.Tmin.dimensionality))
+        if self.Tmax != 0.0: string += ', Tmax=({0:g},"{1}")'.format(float(self.Tmax), str(self.Tmax.dimensionality))
+        if self.Pmin != 0.0: string += ', Pmin=({0:g},"{1}")'.format(float(self.Pmin), str(self.Pmin.dimensionality))
+        if self.Pmax != 0.0: string += ', Pmax=({0:g},"{1}")'.format(float(self.Pmax), str(self.Pmax.dimensionality))
+        if self.comment != '': string += ', comment="""{0}"""'.format(self.comment)
+        string += ')'
+        return string
+
+    def __reduce__(self):
+        """
+        A helper function used when pickling a PDepArrhenius object.
+        """
+        return (PDepArrhenius, (self.pressures, self.arrhenius, self.Tmin, self.Tmax, self.Pmin, self.Pmax, self.order, self.comment))
+
+    property pressures:
+        """The list of pressures."""
+        def __get__(self):
+            return pq.Quantity(self._pressures * 1e-5, pq.bar)
+        def __set__(self, value):
+            if value is None:
+                self._pressures = numpy.array([]) 
+            else:
+                self._pressures = numpy.array(units.convertPressure(value, pq.Pa))
+    
+    cpdef bint isPressureDependent(self) except -2:
+        """
+        Returns ``True`` since PDepArrhenius kinetics are pressure-dependent.
+        """
+        return True
+
+    cdef getAdjacentExpressions(self, double P):
+        """
+        Returns the pressures and Arrhenius expressions for the pressures that
+        most closely bound the specified pressure `P` in bar.
+        """
+        cdef Arrhenius arrh
+        cdef int i, ilow, ihigh
+        P = P * 1e5
+        
+        if P in self._pressures:
+            arrh = self.arrhenius[[p for p in self._pressures].index(P)]
+            return P, P, arrh, arrh
+        else:
+            ilow = 0; ihigh = -1
+            for i in range(1, len(self._pressures)):
+                if self._pressures[i] <= P:
+                    ilow = i
+                if self._pressures[i] > P and ihigh == -1:
+                    ihigh = i
+            return self._pressures[ilow], self._pressures[ihigh], self.arrhenius[ilow], self.arrhenius[ihigh]
+    
+    cpdef double getRateCoefficient(self, double T, double P=0) except -1:
+        """
+        Return the rate coefficient in the appropriate combination of cm^3, 
+        mol, and s at temperature `T` in K and pressure `P` in bar.
+        
+        If k(P+) and k(P-) (the values on either side of the requested P) are
+        zero, then zero is returned. If only k(P-)==0 then it is replaced with 
+        k(P+)/1e10, and vice versa. This allows the logarithmic interpolation
+        to proceed without zero-division errors. (The expression is not defined
+        when one of them is zero and the other is not, so we have to assume
+        something.)
+        """
+        cdef double Plow, Phigh, klow, khigh, k
+        cdef Arrhenius alow, ahigh
+        cdef int j
+        
+        if P == 0:
+            raise ValueError('No pressure specified to pressure-dependent PDepArrhenius.getRateCoefficient().')
+        
+        k = 0.0
+        Plow, Phigh, alow, ahigh = self.getAdjacentExpressions(P)
+        if Plow == Phigh:
+            k = alow.getRateCoefficient(T)
+        else:
+            P = P * 1e5
+            klow = alow.getRateCoefficient(T)
+            khigh = ahigh.getRateCoefficient(T)
+            if klow == khigh == 0.0: return 0.0
+            if klow == 0: klow = khigh/1e10
+            if khigh == 0: khigh = klow/1e10
+            k = klow * 10**(log10(P/Plow)/log10(Phigh/Plow)*log10(khigh/klow))
+        return k
+    
+    cpdef fitToData(self, numpy.ndarray Tlist, numpy.ndarray Plist, numpy.ndarray K, kunits, double T0=1):
+        """
+        Fit the pressure-dependent Arrhenius model to a matrix of rate
+        coefficient data `K` with units of `kunits` corresponding to a set of 
+        temperatures `Tlist` in K and pressures `Plist` in Pa. An Arrhenius 
+        model is fit at each pressure.
+        """
+        cdef int i
+        self.pressures = (Plist,"bar")
+        self.arrhenius = []
+        for i in range(len(Plist)):
+            arrhenius = Arrhenius().fitToData(Tlist, K[:,i], kunits, T0)
+            self.arrhenius.append(arrhenius)
+        return self
