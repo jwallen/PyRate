@@ -195,5 +195,201 @@ class TestArrhenius(unittest.TestCase):
 
 ################################################################################
 
+class TestPDepArrhenius(unittest.TestCase):
+    """
+    Contains unit tests of the :class:`PDepArrhenius` class.
+    """
+    
+    def setUp(self):
+        """
+        A function run before each unit test in this class.
+        """
+        self.arrhenius0 = Arrhenius(
+            A = (1.0e6,"cm^3/(mol*s)"), 
+            n = 1.0, 
+            Ea = (10,"kJ/mol"), 
+            T0 = (300,"K"), 
+            Tmin = (300.0,"K"), 
+            Tmax = (2000.0,"K"), 
+            comment = """This data is completely made up""",
+        )
+        self.arrhenius1 = Arrhenius(
+            A = (1.0e12,"cm^3/(mol*s)"), 
+            n = 1.0, 
+            Ea = (20,"kJ/mol"), 
+            T0 = (300,"K"), 
+            Tmin = (300.0,"K"), 
+            Tmax = (2000.0,"K"), 
+            comment = """This data is completely made up""",
+        )
+        self.pressures = pq.Quantity([0.1, 10.0],"bar")
+        self.arrhenius = [self.arrhenius0, self.arrhenius1]
+        self.Tmin = pq.Quantity(300.0,"K")
+        self.Tmax = pq.Quantity(2000.0,"K")
+        self.Pmin = pq.Quantity(0.1,"bar")
+        self.Pmax = pq.Quantity(10.0,"bar")
+        self.order = 2
+        self.comment = """This data is completely made up"""
+        self.kinetics = PDepArrhenius(
+            pressures = self.pressures,
+            arrhenius = self.arrhenius,
+            Tmin = self.Tmin, 
+            Tmax = self.Tmax, 
+            Pmin = self.Pmin, 
+            Pmax = self.Pmax,
+            order = self.order,
+            comment = self.comment,
+        )
+
+    def test_pressures(self):
+        """
+        Test that the PDepArrhenius pressures property was properly set.
+        """
+        self.assertEqual(len(self.kinetics.pressures), 2)
+        for i in range(2):
+            self.assertEqual(self.kinetics.pressures[i], self.pressures[i])
+        
+    def test_arrhenius(self):
+        """
+        Test that the PDepArrhenius arrhenius property was properly set.
+        """
+        self.assertEqual(len(self.kinetics.arrhenius), 2)
+        for i in range(2):
+            self.assertEqual(self.kinetics.arrhenius[i].A, self.arrhenius[i].A)
+            self.assertEqual(self.kinetics.arrhenius[i].n, self.arrhenius[i].n)
+            self.assertEqual(self.kinetics.arrhenius[i].T0, self.arrhenius[i].T0)
+            self.assertEqual(self.kinetics.arrhenius[i].Ea, self.arrhenius[i].Ea)
+            self.assertEqual(self.kinetics.arrhenius[i].Tmin, self.arrhenius[i].Tmin)
+            self.assertEqual(self.kinetics.arrhenius[i].Tmax, self.arrhenius[i].Tmax)
+            self.assertEqual(self.kinetics.arrhenius[i].order, self.arrhenius[i].order)
+            self.assertEqual(self.kinetics.arrhenius[i].comment, self.arrhenius[i].comment)
+        
+    def test_Tmin(self):
+        """
+        Test that the PDepArrhenius Tmin property was properly set.
+        """
+        self.assertAlmostEqual(self.kinetics.Tmin / self.Tmin, 1.0, 6, '{0} != {1} within 6 places'.format(self.kinetics.Tmin, self.Tmin))
+        
+    def test_Tmax(self):
+        """
+        Test that the PDepArrhenius Tmax property was properly set.
+        """
+        self.assertAlmostEqual(self.kinetics.Tmax / self.Tmax, 1.0, 6, '{0} != {1} within 6 places'.format(self.kinetics.Tmax, self.Tmax))
+
+    def test_Pmin(self):
+        """
+        Test that the PDepArrhenius Pmin property was properly set.
+        """
+        self.assertAlmostEqual(self.kinetics.Pmin / self.Pmin, 1.0, 6, '{0} != {1} within 6 places'.format(self.kinetics.Pmin, self.Pmin))
+        
+    def test_Pmax(self):
+        """
+        Test that the PDepArrhenius Pmax property was properly set.
+        """
+        self.assertAlmostEqual(self.kinetics.Pmax / self.Pmax, 1.0, 6, '{0} != {1} within 6 places'.format(self.kinetics.Pmax, self.Pmax))
+
+    def test_order(self):
+        """
+        Test that the PDepArrhenius order property was properly set.
+        """
+        self.assertAlmostEqual(self.kinetics.order / self.order, 1.0, 6, '{0} != {1} within 6 places'.format(self.kinetics.order, self.order))
+        
+    def test_comment(self):
+        """
+        Test that the PDepArrhenius comment property was properly set.
+        """
+        self.assertEqual(self.kinetics.comment, self.comment)
+
+    def test_isPressureDependent(self):
+        """
+        Test the PDepArrhenius.isPressureDependent() method.
+        """
+        self.assertTrue(self.kinetics.isPressureDependent())
+    
+    def test_getRateCoefficient(self):
+        """
+        Test the PDepArrhenius.getRateCoefficient() method.
+        """
+        print 
+        P = 1e-1
+        for T in [300,400,500,600,700,800,900,1000,1100,1200,1300,1400,1500]:
+            k0 = self.kinetics.getRateCoefficient(T, P)
+            k1 = self.arrhenius0.getRateCoefficient(T)
+            self.assertAlmostEqual(k0 / k1, 1, 6, '{0} != {1} within 6 places'.format(k0, k1))
+        P = 1e1
+        for T in [300,400,500,600,700,800,900,1000,1100,1200,1300,1400,1500]:
+            k0 = self.kinetics.getRateCoefficient(T, P)
+            k1 = self.arrhenius1.getRateCoefficient(T)
+            self.assertAlmostEqual(k0 / k1, 1, 6, '{0} != {1} within 6 places'.format(k0, k1))
+        P = 1e0
+        for T in [300,400,500,600,700,800,900,1000,1100,1200,1300,1400,1500]:
+            k0 = self.kinetics.getRateCoefficient(T, P)
+            k1 = math.sqrt(self.arrhenius0.getRateCoefficient(T) * self.arrhenius1.getRateCoefficient(T))
+            self.assertAlmostEqual(k0 / k1, 1, 6, '{0} != {1} within 6 places'.format(k0, k1))
+        
+    def test_fitToData(self):
+        """
+        Test the PDepArrhenius.fitToData() method.
+        """
+        Tdata = numpy.array([300,400,500,600,700,800,900,1000,1100,1200,1300,1400,1500], numpy.float)
+        Pdata = numpy.array([1e-1,3e-1,1e0,3e0,1e1], numpy.float)
+        kdata = numpy.zeros([len(Tdata),len(Pdata)], numpy.float)
+        for t in range(len(Tdata)):
+            for p in range(len(Pdata)):
+                kdata[t,p] = self.kinetics.getRateCoefficient(Tdata[t], Pdata[p])
+        kinetics = PDepArrhenius().fitToData(Tdata, Pdata, kdata, kunits='cm^3/(mol*s)')
+        for t in range(len(Tdata)):
+            for p in range(len(Pdata)):
+                self.assertAlmostEqual(kinetics.getRateCoefficient(Tdata[t], Pdata[p]) / kdata[t,p], 1, 4)
+        
+    def test_pickle(self):
+        """
+        Test that a PDepArrhenius object can be successfully pickled and
+        unpickled with no loss of information.
+        """
+        import cPickle
+        kinetics = cPickle.loads(cPickle.dumps(self.kinetics))
+        Narrh = 2
+        self.assertEqual(len(self.kinetics.pressures), Narrh)
+        self.assertEqual(len(kinetics.pressures), Narrh)
+        self.assertEqual(len(self.kinetics.arrhenius), Narrh)
+        self.assertEqual(len(kinetics.arrhenius), Narrh)
+        for i in range(Narrh):
+            self.assertEqual(self.kinetics.pressures[i], kinetics.pressures[i])
+            self.assertEqual(self.kinetics.arrhenius[i].A, kinetics.arrhenius[i].A)
+            self.assertEqual(self.kinetics.arrhenius[i].n, kinetics.arrhenius[i].n)
+            self.assertEqual(self.kinetics.arrhenius[i].T0, kinetics.arrhenius[i].T0)
+            self.assertEqual(self.kinetics.arrhenius[i].Ea, kinetics.arrhenius[i].Ea)
+        self.assertEqual(self.kinetics.Tmin, kinetics.Tmin)
+        self.assertEqual(self.kinetics.Tmax, kinetics.Tmax)
+        self.assertEqual(self.kinetics.Pmin, kinetics.Pmin)
+        self.assertEqual(self.kinetics.Pmax, kinetics.Pmax)
+        self.assertEqual(self.kinetics.comment, kinetics.comment)
+        
+    def test_repr(self):
+        """
+        Test that a PDepArrhenius object can be successfully reconstructed
+        from its repr() output with no loss of information.
+        """
+        exec('kinetics = {0!r}'.format(self.kinetics))
+        Narrh = 2
+        self.assertEqual(len(self.kinetics.pressures), Narrh)
+        self.assertEqual(len(kinetics.pressures), Narrh)
+        self.assertEqual(len(self.kinetics.arrhenius), Narrh)
+        self.assertEqual(len(kinetics.arrhenius), Narrh)
+        for i in range(Narrh):
+            self.assertEqual(self.kinetics.pressures[i], kinetics.pressures[i])
+            self.assertEqual(self.kinetics.arrhenius[i].A, kinetics.arrhenius[i].A)
+            self.assertEqual(self.kinetics.arrhenius[i].n, kinetics.arrhenius[i].n)
+            self.assertEqual(self.kinetics.arrhenius[i].T0, kinetics.arrhenius[i].T0)
+            self.assertEqual(self.kinetics.arrhenius[i].Ea, kinetics.arrhenius[i].Ea)
+        self.assertEqual(self.kinetics.Tmin, kinetics.Tmin)
+        self.assertEqual(self.kinetics.Tmax, kinetics.Tmax)
+        self.assertEqual(self.kinetics.Pmin, kinetics.Pmin)
+        self.assertEqual(self.kinetics.Pmax, kinetics.Pmax)
+        self.assertEqual(self.kinetics.comment, kinetics.comment)
+        
+################################################################################
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
