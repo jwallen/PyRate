@@ -28,3 +28,5 @@
 #   DEALINGS IN THE SOFTWARE. 
 #
 ################################################################################
+
+from .model import Arrhenius, PDepArrhenius, Chebyshev
