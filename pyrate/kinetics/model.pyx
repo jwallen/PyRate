@@ -491,3 +491,195 @@ cdef class PDepArrhenius(KineticsModel):
             arrhenius = Arrhenius().fitToData(Tlist, K[:,i], kunits, T0)
             self.arrhenius.append(arrhenius)
         return self
+
+################################################################################
+
+cdef class Chebyshev(KineticsModel):
+    """
+    A model of a phenomenological rate coefficient :math:`k(T,P)` using a
+    set of Chebyshev polynomials in temperature and pressure. The attributes
+    are:
+    
+    =============== ============================================================
+    Attribute       Description
+    =============== ============================================================
+    `coeffs`        Matrix of Chebyshev coefficients
+    `degreeT`       The number of terms in the inverse temperature direction
+    `degreeP`       The number of terms in the log pressure direction
+    =============== ============================================================
+    
+    """
+
+    def __init__(self, coeffs=None, Tmin=None, Tmax=None, Pmin=None, Pmax=None, comment=''):
+        KineticsModel.__init__(self, Tmin=Tmin, Tmax=Tmax, Pmin=Pmin, Pmax=Pmax, comment=comment)
+        self.coeffs = coeffs
+        
+    def __repr__(self):
+        """
+        Return a string representation that can be used to reconstruct the
+        Chebyshev object.
+        """
+        coeffs = self.coeffs
+        s = '(['
+        for i in range(self.degreeT):
+            if i > 0: s += ', '
+            s += '[{0}]'.format(','.join(['{0:g}'.format(float(coeffs[i,j])) for j in range(self.degreeP)]))
+        s += '],"{0}")'.format(str(coeffs.dimensionality))
+        
+        string = 'Chebyshev(coeffs={0}'.format(s)
+        if self.Tmin != 0.0: string += ', Tmin=({0:g},"{1}")'.format(float(self.Tmin), str(self.Tmin.dimensionality))
+        if self.Tmax != 0.0: string += ', Tmax=({0:g},"{1}")'.format(float(self.Tmax), str(self.Tmax.dimensionality))
+        if self.Pmin != 0.0: string += ', Pmin=({0:g},"{1}")'.format(float(self.Pmin), str(self.Pmin.dimensionality))
+        if self.Pmax != 0.0: string += ', Pmax=({0:g},"{1}")'.format(float(self.Pmax), str(self.Pmax.dimensionality))
+        if self.comment != '': string += ', comment="""{0}"""'.format(self.comment)
+        string += ')'
+        return string
+
+    def __reduce__(self):
+        """
+        A helper function used when pickling a Chebyshev object.
+        """
+        return (Chebyshev, (self.coeffs, self.Tmin, self.Tmax, self.Pmin, self.Pmax, self.comment))
+
+    property coeffs:
+        """The matrix of Chebyshev coefficients."""
+        def __get__(self):
+            kunits = getRateCoefficientUnitsFromReactionOrder(self.order)
+            return pq.Quantity(self._coeffs, kunits)
+        def __set__(self, value):
+            if value is None:
+                self._coeffs = numpy.array([])
+                self.degreeT = 0
+                self.degreeP = 0
+            else:
+                if isinstance(value, tuple):
+                    value = pq.Quantity(value[0], value[1])
+                # Try to determine reaction order from units of value
+                order = getReactionOrderFromRateCoefficientUnits(value.units)
+                # If the kinetics already has a specified reaction order,
+                # make sure the units of A are consistent with that order
+                if self.order != -1 and self.order != order:
+                    raise ValueError('Units of preexponential factor "{0}" with reaction order {1:d} do not match internal reaction order {2:d}.'.format(str(value.units.dimensionality), order, self.order))
+                self.order = order
+                kunits = getRateCoefficientUnitsFromReactionOrder(order)
+                factor = float(units.convertRateCoefficient((1.0, value.units), kunits))
+                self._coeffs = numpy.array(value)
+                self._coeffs[0,0] += log10(factor)
+                self.degreeT = self._coeffs.shape[0]
+                self.degreeP = self._coeffs.shape[1]
+        
+    cpdef bint isPressureDependent(self):
+        """
+        Return ``True`` since Chebyshev polynomial kinetics are 
+        pressure-dependent.
+        """
+        return True
+
+    cdef double chebyshev(self, int n, double x):
+        if n == 0:
+            return 1
+        elif n == 1:
+            return x
+        elif n == 2:
+            return -1 + 2*x*x
+        elif n == 3:
+            return x * (-3 + 4*x*x)
+        elif n == 4:
+            return 1 + x*x*(-8 + 8*x*x)
+        elif n == 5:
+            return x * (5 + x*x*(-20 + 16*x*x))
+        elif n == 6:
+            return -1 + x*x*(18 + x*x*(-48 + 32*x*x))
+        elif n == 7:
+            return x * (-7 + x*x*(56 + x*x*(-112 + 64*x*x)))
+        elif n == 8:
+            return 1 + x*x*(-32 + x*x*(160 + x*x*(-256 + 128*x*x)))
+        elif n == 9:
+            return x * (9 + x*x*(-120 + x*x*(432 + x*x*(-576 + 256*x*x))))
+        else:
+            return cos(n * acos(x))
+
+    cdef double getReducedTemperature(self, double T) except -1000:
+        """
+        Return the reduced temperature corresponding to the given temperature
+        `T` in K. This maps the inverse of the temperature onto the domain 
+        [-1, 1] using the `Tmin` and `Tmax` attributes as the limits.
+        """
+        return (2.0/T - 1.0/self._Tmin - 1.0/self._Tmax) / (1.0/self._Tmax - 1.0/self._Tmin)
+    
+    cdef double getReducedPressure(self, double P) except -1000:
+        """
+        Return the reduced pressure corresponding to the given pressure
+        `P` in bar. This maps the logarithm of the pressure onto the domain 
+        [-1, 1] using the `Pmin` and `Pmax` attributes as the limits.
+        """
+        return (2.0*log10(P*1e5) - log10(self._Pmin) - log10(self._Pmax)) / (log10(self._Pmax) - log10(self._Pmin))
+    
+    cpdef double getRateCoefficient(self, double T, double P=0) except -1:
+        """
+        Return the rate coefficient in the appropriate combination of cm^3, 
+        mol, and s at temperature `T` in K and pressure `P` in bar by 
+        evaluating the Chebyshev expression.
+        """
+        cdef double Tred, Pred, k
+        cdef int i, j, t, p
+        
+        if P == 0:
+            raise ValueError('No pressure specified to pressure-dependent Chebyshev.getRateCoefficient().')
+
+        k = 0.0
+        Tred = self.getReducedTemperature(T)
+        Pred = self.getReducedPressure(P)
+        for t in range(self.degreeT):
+            for p in range(self.degreeP):
+                k += self._coeffs[t,p] * self.chebyshev(t, Tred) * self.chebyshev(p, Pred)
+        return 10.0**k
+
+    cpdef fitToData(self, numpy.ndarray Tlist, numpy.ndarray Plist, numpy.ndarray K,
+        str kunits, int degreeT, int degreeP, double Tmin, double Tmax, double Pmin, double Pmax):
+        """
+        Fit a Chebyshev kinetic model to a set of rate coefficients `K`, which
+        is a matrix corresponding to the temperatures `Tlist` in K and pressures
+        `Plist` in bar. `degreeT` and `degreeP` are the degree of the 
+        polynomials in temperature and pressure, while `Tmin`, `Tmax`, `Pmin`,
+        and `Pmax` set the edges of the valid temperature and pressure ranges
+        in K and bar, respectively.
+        """
+        cdef int nT = len(Tlist), nP = len(Plist)
+        cdef list Tred, Pred
+        cdef int t1, p1, t2, p2
+        cdef double T, P
+
+        self.degreeT = degreeT; self.degreeP = degreeP
+
+        # Set temperature and pressure ranges
+        self.Tmin = (Tmin,"K")
+        self.Tmax = (Tmax,"K")
+        self.Pmin = (Pmin,"bar")
+        self.Pmax = (Pmax,"bar")
+
+        # Calculate reduced temperatures and pressures
+        Tred = [self.getReducedTemperature(T) for T in Tlist]
+        Pred = [self.getReducedPressure(P) for P in Plist]
+
+        # Create matrix and vector for coefficient fit (linear least-squares)
+        A = numpy.zeros((nT*nP, degreeT*degreeP), numpy.float64)
+        b = numpy.zeros((nT*nP), numpy.float64)
+        for t1, T in enumerate(Tred):
+            for p1, P in enumerate(Pred):
+                for t2 in range(degreeT):
+                    for p2 in range(degreeP):
+                        A[p1*nT+t1, p2*degreeT+t2] = self.chebyshev(t2, T) * self.chebyshev(p2, P)
+                b[p1*nT+t1] = log10(K[t1,p1])
+
+        # Do linear least-squares fit to get coefficients
+        x, residues, rank, s = numpy.linalg.lstsq(A, b)
+
+        # Extract coefficients
+        coeffs = numpy.zeros((degreeT,degreeP), numpy.float64)
+        for t2 in range(degreeT):
+            for p2 in range(degreeP):
+                coeffs[t2,p2] = x[p2*degreeT+t2]
+        self.coeffs = (coeffs, kunits)
+        
+        return self
