@@ -391,5 +391,185 @@ class TestPDepArrhenius(unittest.TestCase):
         
 ################################################################################
 
+class TestChebyshev(unittest.TestCase):
+    """
+    Contains unit tests of the Chebyshev class.
+    """
+    
+    def setUp(self):
+        """
+        A function run before each unit test in this class.
+        """
+        self.Tmin = pq.Quantity(300,"K")
+        self.Tmax = pq.Quantity(2000,"K")
+        self.Pmin = pq.Quantity(0.01,"bar")
+        self.Pmax = pq.Quantity(100,"bar")
+        self.coeffs = pq.Quantity([
+            [5.67723, 0.729281, -0.11984, 0.00882175],
+            [-1.02669, 0.853639, -0.0323485, -0.027367],
+            [-0.447011, 0.244144, 0.0559122, -0.0101723],
+            [-0.128261, 0.0111596, 0.0281176, 0.00604353],
+            [-0.0117034, -0.0235646, 0.00061009, 0.00401309],
+            [0.0155433, -0.0136846, -0.00463048, -0.000261353],
+            ], "m^3/(mol*s)")
+        self.order = 2
+        self.comment = """acetyl + O2 -> acetylperoxy"""
+        self.chebyshev = Chebyshev(
+            Tmin = self.Tmin,
+            Tmax = self.Tmax,
+            Pmin = self.Pmin,
+            Pmax = self.Pmax,
+            coeffs = self.coeffs,
+            comment = self.comment,
+        )
+        
+    def test_coeffs(self):
+        """
+        Test that the Chebyshev coeffs property was properly set.
+        """
+        self.assertEqual(self.chebyshev.coeffs.shape, self.coeffs.shape)
+        for i in range(self.chebyshev.degreeT):
+            for j in range(self.chebyshev.degreeP):
+                C0 = float(self.coeffs[i,j])
+                C = float(self.chebyshev.coeffs[i,j])
+                if i == 0 and j == 0: C0 += 6
+                self.assertAlmostEqual(C0 / C, 1.0, 4, '{0} != {1} within 4 places'.format(C0, C))
+        
+    def test_degreeT(self):
+        """
+        Test that the Chebyshev degreeT property was properly set.
+        """
+        self.assertEqual(self.chebyshev.degreeT, self.coeffs.shape[0])
+        
+    def test_degreeP(self):
+        """
+        Test that the Chebyshev degreeP property was properly set.
+        """
+        self.assertEqual(self.chebyshev.degreeP, self.coeffs.shape[1])
+        
+    def test_Tmin(self):
+        """
+        Test that the Chebyshev Tmin property was properly set.
+        """
+        self.assertAlmostEqual(self.chebyshev.Tmin / self.Tmin, 1.0, 6, '{0} != {1} within 6 places'.format(self.chebyshev.Tmin, self.Tmin))
+        
+    def test_Tmax(self):
+        """
+        Test that the Chebyshev Tmax property was properly set.
+        """
+        self.assertAlmostEqual(self.chebyshev.Tmax / self.Tmax, 1.0, 6, '{0} != {1} within 6 places'.format(self.chebyshev.Tmax, self.Tmax))
+
+    def test_Pmin(self):
+        """
+        Test that the Chebyshev Pmin property was properly set.
+        """
+        self.assertAlmostEqual(self.chebyshev.Pmin / self.Pmin, 1.0, 6, '{0} != {1} within 6 places'.format(self.chebyshev.Pmin, self.Pmin))
+        
+    def test_Pmax(self):
+        """
+        Test that the Chebyshev Pmax property was properly set.
+        """
+        self.assertAlmostEqual(self.chebyshev.Pmax / self.Pmax, 1.0, 6, '{0} != {1} within 6 places'.format(self.chebyshev.Pmax, self.Pmax))
+
+    def test_order(self):
+        """
+        Test that the Chebyshev order property was properly set.
+        """
+        self.assertAlmostEqual(self.chebyshev.order / self.order, 1.0, 6, '{0} != {1} within 6 places'.format(self.chebyshev.order, self.order))
+        
+    def test_comment(self):
+        """
+        Test that the Chebyshev comment property was properly set.
+        """
+        self.assertEqual(self.chebyshev.comment, self.comment)
+
+    def test_isPressureDependent(self):
+        """
+        Test the Chebyshev.isPressureDependent() method.
+        
+        """
+        self.assertTrue(self.chebyshev.isPressureDependent())
+    
+    def test_getRateCoefficient(self):
+        """
+        Test the Chebyshev.getRateCoefficient() method.
+        """
+        Tlist = numpy.array([300,500,1000,1500])
+        Plist = numpy.array([1e-1,1e0,1e1])
+        Kexp = numpy.array([
+            [2.29100e+12, 2.58452e+12, 2.57204e+12],
+            [1.10198e+12, 2.04037e+12, 2.57428e+12],
+            [4.37919e+10, 2.36481e+11, 8.57727e+11],
+            [5.20144e+09, 4.10123e+10, 2.50401e+11],
+        ])
+        for t in range(Tlist.shape[0]):
+            for p in range(Plist.shape[0]):
+                Kact = self.chebyshev.getRateCoefficient(Tlist[t], Plist[p])
+                self.assertAlmostEqual(Kact / Kexp[t,p], 1.0, 4, '{0} != {1} within 4 places'.format(Kexp[t,p], Kact))
+        
+    def test_fitToData(self):
+        """
+        Test the Chebyshev.fitToData() method.
+        """
+        Tdata = numpy.array([300,400,500,600,700,800,900,1000,1100,1200,1300,1400,1500,1600,1700,1800,1900,2000])
+        Pdata = numpy.array([3e3,1e4,3e4,1e5,3e5,1e6,3e7])
+        nT = len(Tdata); nP = len(Pdata)
+        kdata = numpy.zeros((nT,nP))
+        for t in range(nT):
+            for p in range(nP):
+                kdata[t,p] = self.chebyshev.getRateCoefficient(Tdata[t], Pdata[p])
+        chebyshev = Chebyshev().fitToData(Tdata, Pdata, kdata, kunits='cm^3/(mol*s)', degreeT=6, degreeP=4, Tmin=300, Tmax=2000, Pmin=1e4, Pmax=1e6)
+        for t in range(nT):
+            for p in range(nP):
+                kfit = chebyshev.getRateCoefficient(Tdata[t], Pdata[p])
+                self.assertAlmostEqual(kfit / kdata[t,p], 1, 4, '{0} != {1} within 4 places'.format(kdata[t,p], kfit))
+        
+    def test_pickle(self):
+        """
+        Test that a Chebyshev object can be successfully pickled and
+        unpickled with no loss of information.
+        """
+        import cPickle
+        chebyshev = cPickle.loads(cPickle.dumps(self.chebyshev))
+        self.assertEqual(self.chebyshev.coeffs.shape[0], chebyshev.coeffs.shape[0])
+        self.assertEqual(self.chebyshev.coeffs.shape[1], chebyshev.coeffs.shape[1])
+        self.assertEqual(self.chebyshev.degreeT, chebyshev.degreeT)
+        self.assertEqual(self.chebyshev.degreeP, chebyshev.degreeP)
+        for i in range(self.chebyshev.degreeT):
+            for j in range(self.chebyshev.degreeP):
+                C0 = self.chebyshev.coeffs[i,j]
+                C = chebyshev.coeffs[i,j]
+                self.assertAlmostEqual(C0 / C, 1.0, 4, '{0} != {1} within 4 places'.format(C0, C))
+        self.assertAlmostEqual(self.chebyshev.Tmin, chebyshev.Tmin, 4)
+        self.assertAlmostEqual(self.chebyshev.Tmax, chebyshev.Tmax, 4)
+        self.assertAlmostEqual(self.chebyshev.Pmin, chebyshev.Pmin, 4)
+        self.assertAlmostEqual(self.chebyshev.Pmax, chebyshev.Pmax, 4)
+        self.assertEqual(self.chebyshev.order, chebyshev.order)
+        self.assertEqual(self.chebyshev.comment, chebyshev.comment)
+
+    def test_repr(self):
+        """
+        Test that a Chebyshev object can be successfully reconstructed
+        from its repr() output with no loss of information.
+        """
+        exec('chebyshev = {0!r}'.format(self.chebyshev))
+        self.assertEqual(self.chebyshev.coeffs.shape[0], chebyshev.coeffs.shape[0])
+        self.assertEqual(self.chebyshev.coeffs.shape[1], chebyshev.coeffs.shape[1])
+        self.assertEqual(self.chebyshev.degreeT, chebyshev.degreeT)
+        self.assertEqual(self.chebyshev.degreeP, chebyshev.degreeP)
+        for i in range(self.chebyshev.degreeT):
+            for j in range(self.chebyshev.degreeP):
+                C0 = self.chebyshev.coeffs[i,j]
+                C = chebyshev.coeffs[i,j]
+                self.assertAlmostEqual(C0 / C, 1.0, 4, '{0} != {1} within 4 places'.format(C0, C))
+        self.assertAlmostEqual(self.chebyshev.Tmin, chebyshev.Tmin, 4)
+        self.assertAlmostEqual(self.chebyshev.Tmax, chebyshev.Tmax, 4)
+        self.assertAlmostEqual(self.chebyshev.Pmin, chebyshev.Pmin, 4)
+        self.assertAlmostEqual(self.chebyshev.Pmax, chebyshev.Pmax, 4)
+        self.assertEqual(self.chebyshev.order, chebyshev.order)
+        self.assertEqual(self.chebyshev.comment, chebyshev.comment)
+
+################################################################################
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
