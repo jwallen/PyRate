@@ -26,6 +26,117 @@
 !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
 
+! Compute the value, gradient, and Hessian of the reaction coordinate.
+! Parameters:
+!   centroid - The centroid of each atom
+!   Natoms - The number of atoms in the molecular system
+!   Rinf - The distance at which the reactant interaction becomes negligible
+!   massfrac - The mass fraction of each atom
+!   reactant1_atoms - An array of indices for each atom in the first reactant
+!   Nreactant1_atoms - The number of atoms in the first reactant
+!   reactant2_atoms - An array of indices for each atom in the second reactant
+!   Nreactant2_atoms - The number of atoms in the second reactant
+!   Nts - The number of equivalent transition states that define the dividing surface
+!   forming_bonds - An array listing the pairs of indices of each forming bond in each transition state
+!   forming_bond_lengths - An array listing the lengths of each forming bond in each transition state
+!   number_of_forming_bonds - The number of bonds being formed by the reaction
+!   breaking_bonds - An array listing the pairs of indices of each breaking bond in each transition state
+!   breaking_bond_lengths - An array listing the lengths of each breaking bond in each transition state
+!   number_of_breaking_bonds - The number of bonds being broken by the reaction
+!   xi_current - The maximum of the reaction coordinate at the current temperature
+!   mode - 1 for umbrella integration, 2 for recrossing factor
+! Returns:
+!   xi - The value of the reaction coordinate
+!   dxi - The gradient of the reaction coordinate
+!   d2xi - The Hessian of the reaction coordinate
+subroutine get_reaction_coordinate(centroid, xi, dxi, d2xi, Natoms, &
+  Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+  Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+  breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
+  xi_current, mode)
+
+    integer, intent(in) :: Natoms
+    double precision, intent(in) :: centroid(3,Natoms)
+    integer, intent(in) :: mode
+    double precision, intent(in) :: xi_current
+    ! Reactant dividing surface
+    integer, intent(in) :: Nreactant1_atoms, Nreactant2_atoms
+    double precision, intent(in) :: massfrac(Natoms)
+    integer, intent(in) :: reactant1_atoms(Nreactant1_atoms), reactant2_atoms(Nreactant2_atoms)
+    double precision, intent(in) :: Rinf
+    ! Transition state dividing surface
+    integer, intent(in) :: Nts
+    integer, intent(in) :: number_of_forming_bonds, number_of_breaking_bonds
+    integer, intent(in) :: forming_bonds(Nts,number_of_forming_bonds,2)
+    integer, intent(in) :: breaking_bonds(Nts,number_of_breaking_bonds,2)
+    double precision, intent(in) :: forming_bond_lengths(Nts,number_of_forming_bonds)
+    double precision, intent(in) :: breaking_bond_lengths(Nts,number_of_breaking_bonds)
+    ! Result
+    double precision, intent(out) :: xi, dxi(3,Natoms), d2xi(3,Natoms,3,Natoms)
+
+    double precision :: s0, ds0(3,Natoms), d2s0(3,Natoms,3,Natoms)
+    double precision :: s1, ds1(3,Natoms), d2s1(3,Natoms,3,Natoms)
+    integer :: i1, i2, j1, j2
+
+    xi = 0.0d0
+    dxi(:,:) = 0.0d0
+    d2xi(:,:,:,:) = 0.0d0
+
+    ! Evaluate reactants dividing surface
+    call reactants_value(centroid, Natoms, Rinf, massfrac, &
+        reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+        s0)
+    ! Evaluate reactants dividing surface gradient
+    call reactants_gradient(centroid, Natoms, massfrac, &
+        reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+        ds0)
+    ! Evaluate reactants dividing surface Hessian
+    call reactants_hessian(centroid, Natoms, massfrac, &
+        reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+        d2s0)
+
+    ! Evaluate transition state dividing surface
+    call transition_state_value(centroid, Natoms, Nts, &
+        forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+        breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, s1)
+    ! Evaluate transition state dividing surface gradient
+    call transition_state_gradient(centroid, Natoms, Nts, &
+        forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+        breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, ds1)
+    ! Evaluate transition state dividing surface Hessian
+    call transition_state_hessian(centroid, Natoms, Nts, &
+        forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+        breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, d2s1)
+
+    ! Compute reaction coordinate and its gradient and Hessian
+    ! The functional form is different depending on whether we are doing
+    ! umbrella integration or a recrossing factor calculation
+    if (mode .eq. 1) then
+        ! Umbrella integration
+        xi = s0 / (s0 - s1)
+        dxi = (s0 * ds1 - s1 * ds0) / ((s0 - s1) * (s0 - s1))
+        do i1 = 1, 3
+            do j1 = 1, Natoms
+                do i2 = 1, 3
+                    do j2 = 1, Natoms
+                        d2xi(i1,j1,i2,j2) = ((s0 * d2s1(i1,j1,i2,j2) + ds0(i2,j2) * ds1(i1,j1) &
+                            - ds1(i2,j2) * ds0(i1,j1) - s1 * d2s0(i1,j1,i2,j2)) * (s0 - s1) &
+                            - 2.0d0 * (s0 * ds1(i1,j1) - s1 * ds0(i1,j1)) &
+                            * (ds0(i2,j2) - ds1(i2,j2))) &
+                            / ((s0 - s1) * (s0 - s1) * (s0 - s1))
+                    end do
+                end do
+            end do
+        end do
+    elseif (mode .eq. 2) then
+        ! Recrossing factor
+        xi = xi_current * s1 + (1 - xi_current) * s0
+        dxi = xi_current * ds1 + (1 - xi_current) * ds0
+        ! Don't need Hessian for recrossing factor, so don't compute it
+    end if
+
+end subroutine get_reaction_coordinate
+
 ! Compute the total energy of all ring polymers in the RPMD system.
 ! Parameters:
 !   q - The position of each bead in each atom
