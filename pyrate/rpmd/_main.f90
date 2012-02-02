@@ -26,6 +26,174 @@
 !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
 
+! Constrain the position and the momentum to the dividing surface, using the
+! SHAKE/RATTLE algorithm.
+! Parameters:
+!   p - The momentum of each bead in each atom
+!   q - The position of each bead in each atom
+!   dxi - The gradient of the reaction coordinate
+!   mass - The mass of each atom
+!   dt - The time step to use in the simulation
+!   Natoms - The number of atoms in the molecular system
+!   Nbeads - The number of beads to use per atom
+!   Rinf - The distance at which the reactant interaction becomes negligible
+!   massfrac - The mass fraction of each atom
+!   reactant1_atoms - An array of indices for each atom in the first reactant
+!   Nreactant1_atoms - The number of atoms in the first reactant
+!   reactant2_atoms - An array of indices for each atom in the second reactant
+!   Nreactant2_atoms - The number of atoms in the second reactant
+!   Nts - The number of equivalent transition states that define the dividing surface
+!   forming_bonds - An array listing the pairs of indices of each forming bond in each transition state
+!   forming_bond_lengths - An array listing the lengths of each forming bond in each transition state
+!   number_of_forming_bonds - The number of bonds being formed by the reaction
+!   breaking_bonds - An array listing the pairs of indices of each breaking bond in each transition state
+!   breaking_bond_lengths - An array listing the lengths of each breaking bond in each transition state
+!   number_of_breaking_bonds - The number of bonds being broken by the reaction
+!   xi_current - The maximum of the reaction coordinate at the current temperature
+!   mode - 1 for umbrella integration, 2 for recrossing factor
+! Returns:
+!   p - The constrained momentum of each bead in each atom
+!   q - The constrained position of each bead in each atom
+subroutine constrain_to_dividing_surface(p, q, dxi, mass, &
+  dt, Natoms, Nbeads, &
+  Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+  Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+  breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
+  xi_current, mode)
+
+    implicit none
+    integer, intent(in) :: Natoms, Nbeads
+    double precision, intent(inout) :: p(3,Natoms,Nbeads), q(3,Natoms,Nbeads)
+    integer, intent(in) :: mode
+    double precision, intent(in) :: xi_current, dt, mass(Natoms)
+    double precision, intent(in) :: dxi(3,Natoms)
+    ! Reactant dividing surface
+    integer, intent(in) :: Nreactant1_atoms, Nreactant2_atoms
+    double precision, intent(in) :: massfrac(Natoms)
+    integer, intent(in) :: reactant1_atoms(Nreactant1_atoms), reactant2_atoms(Nreactant2_atoms)
+    double precision, intent(in) :: Rinf
+    ! Transition state dividing surface
+    integer, intent(in) :: Nts
+    integer, intent(in) :: number_of_forming_bonds, number_of_breaking_bonds
+    integer, intent(in) :: forming_bonds(Nts,number_of_forming_bonds,2)
+    integer, intent(in) :: breaking_bonds(Nts,number_of_breaking_bonds,2)
+    double precision, intent(in) :: forming_bond_lengths(Nts,number_of_forming_bonds)
+    double precision, intent(in) :: breaking_bond_lengths(Nts,number_of_breaking_bonds)
+
+    double precision :: centroid(3,Natoms), qctemp(3,Natoms)
+    integer :: i, j, k, maxiter, iter
+    double precision :: xi_new, dxi_new(3,Natoms), d2xi_new(3,Natoms,3,Natoms)
+    double precision :: mult, sigma, dsigma, dx, coeff
+
+    call get_centroid(q, Natoms, Nbeads, centroid)
+
+    ! The Lagrange multiplier for the constraint
+    mult = 0.0d0
+
+    qctemp(:,:) = 0.0d0
+
+    maxiter = 100
+    do iter = 1, maxiter
+
+        coeff = mult * dt * dt / Nbeads
+
+        do i = 1, 3
+            do j = 1, Natoms
+                qctemp(i,j) = centroid(i,j) + coeff * dxi(i,j) / mass(j)
+            end do
+        end do
+
+        call get_reaction_coordinate(qctemp, xi_new, dxi_new, d2xi_new, Natoms, &
+            Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+            Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+            breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
+            xi_current, mode)
+
+        sigma = xi_new
+        dsigma = 0.0d0
+        do i = 1, 3
+            do j = 1, Natoms
+                dsigma = dsigma + dxi_new(i,j) * dt * dt * dxi(i,j) / (mass(j) * Nbeads)
+            end do
+        end do
+
+        dx = sigma / dsigma
+        mult = mult - dx
+        if (dabs(dx) .lt. 1.0d-9 .or. dabs(sigma) .lt. 1.0d-13) exit
+
+        if (iter .eq. maxiter) write (*,fmt='(A)') 'SHAKE exceeded maximum number of iterations.'
+
+    end do
+
+    do i = 1, 3
+        do j = 1, Natoms
+            do k = 1, Nbeads
+                q(i,j,k) = q(i,j,k) + coeff / mass(j) * dxi(i,j)
+                p(i,j,k) = p(i,j,k) + mult * dt / Nbeads * dxi(i,j)
+            end do
+        end do
+    end do
+
+end subroutine constrain_to_dividing_surface
+
+! Constrain the momentum to the reaction coordinate, to ensure that the time
+! derivative of the dividing surface is zero.
+! Parameters:
+!   p - The momentum of each bead in each atom
+!   mass - The mass of each atom
+!   dxi - The gradient of the reaction coordinate
+!   Natoms - The number of atoms in the molecular system
+!   Nbeads - The number of beads to use per atom
+! Returns:
+!   p - The constrained momentum of each bead in each atom
+subroutine constrain_momentum_to_dividing_surface(p, mass, dxi, Natoms, Nbeads)
+
+    implicit none
+    integer, intent(in) :: Natoms, Nbeads
+    double precision, intent(in) :: dxi(3,Natoms), mass(Natoms)
+    double precision, intent(inout) :: p(3,Natoms,Nbeads)
+
+    double precision :: coeff1, coeff2, lambda
+    integer :: i, j, k
+
+    coeff1 = 0.0d0
+    do i = 1, 3
+        do j = 1, Natoms
+            do k = 1, Nbeads
+                coeff1 = coeff1 + dxi(i,j) * p(i,j,k) / mass(j)
+            end do
+        end do
+    end do
+
+    coeff2 = 0.0d0
+    do i = 1, 3
+        do j = 1, Natoms
+            coeff2 = coeff2 + dxi(i,j) * dxi(i,j) / mass(j)
+        end do
+    end do
+
+    lambda = -coeff1 / coeff2 / Nbeads
+    do i = 1, 3
+        do j = 1, Natoms
+            do k = 1, Nbeads
+                p(i,j,k) = p(i,j,k) + lambda * dxi(i,j)
+            end do
+        end do
+    end do
+
+    ! DEBUG: Check that constraint is correct: coeff1 should now evaluate to
+    ! zero within numerical precision
+    !coeff1 = 0.0d0
+    !do i = 1, 3
+    !    do j = 1, Natoms
+    !        do k = 1, Nbeads
+    !            coeff1 = coeff1 + dxi(i,j) * p(i,j,k) / mass(j)
+    !        end do
+    !    end do
+    !end do
+
+end subroutine constrain_momentum_to_dividing_surface
+
 ! Compute the value, gradient, and Hessian of the reaction coordinate.
 ! Parameters:
 !   centroid - The centroid of each atom
