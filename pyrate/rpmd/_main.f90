@@ -26,6 +26,200 @@
 !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
 
+! Compute the transmission coefficient using a RPMD simulation at the given
+! inverse temperature. All values are in atomic units.
+! Parameters:
+!   beta - The inverse temperature at which to compute the transmission coefficient
+!   Natoms - The number of atoms in the molecular system
+!   Nbeads - The number of beads to use per atom
+!   dt - The time step to use in the simulation
+!   xi_current - The maximum of the reaction coordinate at this temperature
+!   geometry - The initial geometry to use for the beads
+!   mass - The mass of each atom in the molecular system
+!   potential - A function that evaluates the potential and force for a given position
+!   equilibration_steps - The number of time steps to take to equilibrate the initial configuration
+!   parent_evolution_steps - The number of time steps to evolve the constrained parent trajectory after equilibration
+!   child_sampling_steps - The number of time steps to take between sampling of the parent trajectory
+!   children_per_sampling - The number of child trajectories to run at each sampling of the parent trajectory
+!   child_evolution_steps - The number of time steps to evolve each unconstrained child trajectory
+!   save_parent_trajectory - 1 to save the parent trajectory to disk (slow!), 0 otherwise
+!   save_child_trajectories - 1 to save some child trajectories to disk (slow!), 0 otherwise
+!   Rinf - The distance at which the reactant interaction becomes negligible
+!   massfrac - The mass fraction of each atom
+!   reactant1_atoms - An array of indices for each atom in the first reactant
+!   Nreactant1_atoms - The number of atoms in the first reactant
+!   reactant2_atoms - An array of indices for each atom in the second reactant
+!   Nreactant2_atoms - The number of atoms in the second reactant
+!   Nts - The number of equivalent transition states that define the dividing surface
+!   forming_bonds - An array listing the pairs of indices of each forming bond in each transition state
+!   forming_bond_lengths - An array listing the lengths of each forming bond in each transition state
+!   number_of_forming_bonds - The number of bonds being formed by the reaction
+!   breaking_bonds - An array listing the pairs of indices of each breaking bond in each transition state
+!   breaking_bond_lengths - An array listing the lengths of each breaking bond in each transition state
+!   number_of_breaking_bonds - The number of bonds being broken by the reaction
+! Returns:
+!   kappa - The final value of the transmission coefficient
+subroutine compute_transmission_coefficient(beta, Natoms, Nbeads, dt, xi_current, &
+  geometry, mass, potential, &
+  equilibration_steps, parent_evolution_steps, child_sampling_steps, &
+  children_per_sampling, child_evolution_steps, save_parent_trajectory, &
+  save_child_trajectories, &
+  Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+  Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+  breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
+  kappa)
+
+    implicit none
+    external potential
+    ! System parameters
+    double precision, intent(in) :: beta
+    integer, intent(in) :: Natoms, Nbeads
+    double precision, intent(in) :: dt
+    double precision, intent(in) :: xi_current
+    double precision, intent(in) :: geometry(3,Natoms)
+    double precision, intent(in) :: mass(Natoms)
+    ! Recrossing method options
+    integer, intent(in) :: equilibration_steps
+    integer, intent(in) :: parent_evolution_steps
+    integer, intent(in) :: child_sampling_steps
+    integer, intent(in) :: children_per_sampling
+    integer, intent(in) :: child_evolution_steps
+    integer, intent(in) :: save_parent_trajectory, save_child_trajectories
+    ! Reactant dividing surface
+    double precision, intent(in) :: massfrac(Natoms)
+    integer, intent(in) :: Nreactant1_atoms, Nreactant2_atoms
+    integer, intent(in) :: reactant1_atoms(Nreactant1_atoms), reactant2_atoms(Nreactant2_atoms)
+    double precision, intent(in) :: Rinf
+    ! Transition state dividing surface
+    integer, intent(in) :: Nts
+    integer, intent(in) :: number_of_forming_bonds, number_of_breaking_bonds
+    integer, intent(in) :: forming_bonds(Nts,number_of_forming_bonds,2)
+    integer, intent(in) :: breaking_bonds(Nts,number_of_breaking_bonds,2)
+    double precision, intent(in) :: forming_bond_lengths(Nts,number_of_forming_bonds)
+    double precision, intent(in) :: breaking_bond_lengths(Nts,number_of_breaking_bonds)
+    ! Result
+    double precision, intent(out) :: kappa
+
+    double precision :: xi, xi_child, vs, fs
+    double precision :: V(Nbeads), V_child(Nbeads)
+    double precision :: dxi(3,Natoms), dxi_child(3,Natoms), centroid(3,Natoms)
+    double precision :: q(3,Natoms,Nbeads), p(3,Natoms,Nbeads), dVdq(3,Natoms,Nbeads)
+    double precision :: q_child(3,Natoms,Nbeads), p_child(3,Natoms,Nbeads), dVdq_child(3,Natoms,Nbeads)
+    double precision :: p_temp(3,Natoms,Nbeads)
+    double precision :: d2xi(3,Natoms,3,Natoms), d2xi_child(3,Natoms,3,Natoms)
+    double precision :: threq, rn, Ering, Ek
+    integer :: i, j, k, parent_step, child_count, child_step, pfactor
+    integer :: mode
+
+    mode = 2
+    Ering = 0.0d0
+    Ek = 0.0d0
+
+    ! Average frequency of collisions (Andersen thermostat)
+    threq = 1.0d0 / dsqrt(dble(equilibration_steps))
+
+    ! Seed the random number generator
+    call random_seed()
+
+    ! Generate initial position using transition state geometry
+    ! (All beads start at same position)
+    do i = 1, 3
+        do j = 1, Natoms
+            do k = 1, Nbeads
+                q(i,j,k) = geometry(i,j)
+            end do
+        end do
+    end do
+    call sample_momentum(p, mass, beta, Natoms, Nbeads)
+    call get_centroid(q, Natoms, Nbeads, centroid)
+    call get_reaction_coordinate(centroid, xi, dxi, d2xi, Natoms, &
+        Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+        Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+        breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
+        xi_current, mode)
+    call get_potential(q, xi, dxi, d2xi, V, dVdq, Natoms, Nbeads, potential)
+
+    ! Allow parent trajectory to relax in the presence of an
+    ! Andersen thermostat, with centroids constrained to the transition
+    ! state dividing surface
+    write (*,fmt='(A)') 'Equilibrating parent trajectory...'
+    do parent_step = 1, equilibration_steps
+        call evolve(p, q, V, dVdq, xi, dxi, d2xi, Natoms, Nbeads, 1, &
+            beta, dt, mass, potential, &
+            Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+            Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+            breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
+            xi_current, mode)
+        call random(rn)
+        if (rn .lt. threq) call sample_momentum(p, mass, beta, Natoms, Nbeads)
+
+        ! DEBUG: Check that energy is conserved
+        !call get_ring_polymer_energy(q, mass, beta, Natoms, Nbeads, Ering)
+        !call get_kinetic_energy(p, mass, Natoms, Nbeads, Ek)
+        !write (*,fmt='(4F13.8)') Ek, Ering, sum(V), Ek + Ering + sum(V)
+
+    end do
+    write (*,fmt='(A)') 'Finished equilibration of parent trajectory.'
+
+    ! Continue to evolve parent trajectory in the presence of an Andersen
+    ! thermostat, with centroids constrained to the transition
+    ! state dividing surface
+    ! Stop every so often to sample a number of child trajectories
+    write (*,fmt='(A)') 'Evolving parent trajectory...'
+    do parent_step = 0, parent_evolution_steps
+
+        if (mod(parent_step, child_sampling_steps) .eq. 0) then
+
+            write (*,fmt='(A,I4,A,F8.1,A)') 'Starting ', children_per_sampling, &
+                ' child trajectories at t = ', parent_step * dt * 2.418884326505e-5, ' ps'
+            do child_count = 1, children_per_sampling / 2
+
+                call sample_momentum(p_temp, mass, beta, Natoms, Nbeads)
+
+                do pfactor = -1, 1, 2
+
+                    q_child(:,:,:) = q
+                    p_child(:,:,:) = p_temp * pfactor
+                    call get_centroid(q_child, Natoms, Nbeads, centroid)
+                    call get_reaction_coordinate(centroid, xi_child, dxi_child, d2xi_child, Natoms, &
+                        Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+                        Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+                        breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
+                        xi_current, mode)
+                    call get_potential(q_child, xi_child, dxi_child, d2xi_child, &
+                        V_child, dVdq_child, Natoms, Nbeads, potential)
+
+                    do child_step = 1, child_evolution_steps
+                        call evolve(p_child, q_child, V_child, dVdq_child, &
+                            xi_child, dxi_child, d2xi_child, Natoms, Nbeads, 0, &
+                            beta, dt, mass, potential, &
+                            Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+                            Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+                            breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
+                            xi_current, mode)
+                    end do
+
+                end do
+
+            end do
+            write (*,fmt='(A,I4,A,F8.1,A)') 'Finished ', children_per_sampling, &
+                ' child trajectories at t = ', parent_step * dt * 2.418884326505e-5, ' ps'
+
+        end if
+
+        call evolve(p, q, V, dVdq, xi, dxi, d2xi, Natoms, Nbeads, 1, &
+            beta, dt, mass, potential, &
+            Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+            Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+            breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
+            xi_current, mode)
+        call random(rn)
+        if (rn .lt. threq) call sample_momentum(p_temp, mass, beta, Natoms, Nbeads)
+    end do
+    write (*,fmt='(A)') 'Finished evolution of parent trajectory.'
+
+end subroutine compute_transmission_coefficient
+
 ! Evolve the RPMD system for one time step, optionally applying a constraint
 ! that the system remain on the transition state dividing surface.
 ! Parameters:
@@ -529,6 +723,41 @@ subroutine get_potential(q, xi, dxi, d2xi, V, dVdq, Natoms, Nbeads, potential)
     call potential(q, V, dVdq, Natoms, Nbeads)
 
 end subroutine get_potential
+
+! Return a pseudo-random sampling of momenta from a Boltzmann distribution at
+! the temperature of interest.
+! Parameters:
+!   p - The momentum of each bead in each atom
+!   mass - The mass of each atom
+!   beta - The inverse temperature of interest
+!   Natoms - The number of atoms in the molecular system
+!   Nbeads - The number of beads to use per atom
+! Returns:
+!   p - The sampled momentum of each bead in each atom
+subroutine sample_momentum(p, mass, beta, Natoms, Nbeads)
+
+    implicit none
+    integer, intent(in) :: Natoms, Nbeads
+    double precision, intent(in) :: mass(Natoms)
+    double precision, intent(in) :: beta
+    double precision, intent(out) :: p(3,Natoms,Nbeads)
+
+    double precision :: beta_n, dp(Natoms)
+    integer :: i, j, k
+
+    beta_n = beta / Nbeads
+    dp = sqrt(mass / beta_n)
+
+    do i = 1, 3
+        do j = 1, Natoms
+            do k = 1, Nbeads
+                call randomn(p(i,j,k))
+                p(i,j,k) = p(i,j,k) * dp(j)
+            end do
+        end do
+    end do
+
+end subroutine sample_momentum
 
 ! Compute the total energy of all ring polymers in the RPMD system.
 ! Parameters:
