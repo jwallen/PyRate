@@ -108,7 +108,8 @@ subroutine compute_transmission_coefficient(beta, Natoms, Nbeads, dt, xi_current
     double precision :: p_temp(3,Natoms,Nbeads)
     double precision :: d2xi(3,Natoms,3,Natoms), d2xi_child(3,Natoms,3,Natoms)
     double precision :: threq, rn, Ering, Ek
-    integer :: i, j, k, parent_step, child_count, child_step, pfactor
+    double precision :: kappa_num(child_evolution_steps), kappa_denom
+    integer :: i, j, k, parent_step, child_count, child_step, total_child_count, pfactor
     integer :: mode
 
     mode = 2
@@ -117,6 +118,11 @@ subroutine compute_transmission_coefficient(beta, Natoms, Nbeads, dt, xi_current
 
     ! Average frequency of collisions (Andersen thermostat)
     threq = 1.0d0 / dsqrt(dble(equilibration_steps))
+
+    ! Parameters used to compute transmission coefficient
+    kappa_denom = 0.0d0
+    kappa_num(:) = 0.0d0
+    total_child_count = 0
 
     ! Seed the random number generator
     call random_seed()
@@ -200,6 +206,10 @@ subroutine compute_transmission_coefficient(beta, Natoms, Nbeads, dt, xi_current
                     call get_potential(q_child, xi_child, dxi_child, d2xi_child, &
                         V_child, dVdq_child, Natoms, Nbeads, potential)
 
+                    call get_recrossing_velocity(p_child, mass, dxi_child, Natoms, Nbeads, vs)
+                    call get_recrossing_flux(mass, dxi_child, beta, Natoms, fs)
+                    if (vs .gt. 0) kappa_denom = kappa_denom + vs / fs
+
                     do child_step = 1, child_evolution_steps
                         call evolve(p_child, q_child, V_child, dVdq_child, &
                             xi_child, dxi_child, d2xi_child, Natoms, Nbeads, 0, &
@@ -219,11 +229,24 @@ subroutine compute_transmission_coefficient(beta, Natoms, Nbeads, dt, xi_current
                         close(888)
                     end if
 
+                    total_child_count = total_child_count + 1
+
                 end do
 
             end do
             write (*,fmt='(A,I4,A,F8.1,A)') 'Finished ', children_per_sampling, &
                 ' child trajectories at t = ', parent_step * dt * 2.418884326505e-5, ' ps'
+
+            ! Save current value of recrossing factor to a file
+            ! This might be useful in case the job dies unexpectedly
+            open(unit=1,file='recrossing_factor.dat')
+            do child_step = 1, child_evolution_steps
+                write(1,fmt='(F11.6,F11.6,F11.6)') child_step * dt * 2.418884326505e-5, &
+                  kappa_num(child_step) / kappa_denom, kappa_num(child_step) / total_child_count
+            end do
+            close(1)
+
+            write (*,fmt='(A,F9.6)') 'Current value of transmission coefficient = ', kappa_num(child_evolution_steps) / kappa_denom
 
         end if
 
@@ -243,6 +266,8 @@ subroutine compute_transmission_coefficient(beta, Natoms, Nbeads, dt, xi_current
         close(77)
         close(88)
     end if
+
+    kappa = kappa_num(child_evolution_steps) / kappa_denom
 
 end subroutine compute_transmission_coefficient
 
@@ -749,6 +774,68 @@ subroutine get_potential(q, xi, dxi, d2xi, V, dVdq, Natoms, Nbeads, potential)
     call potential(q, V, dVdq, Natoms, Nbeads)
 
 end subroutine get_potential
+
+! Return the flux used to compute the recrossing factor.
+! Parameters:
+!   mass - The mass of each atom
+!   dxi - The gradient of the reaction coordinate
+!   beta - The inverse temperature of interest
+!   Natoms - The number of atoms in the molecular system
+!   Nbeads - The number of beads to use per atom
+! Returns:
+!   fs - The flux used to compute the recrossing factor
+subroutine get_recrossing_flux(mass, dxi, beta, Natoms, fs)
+
+    implicit none
+    integer, intent(in) :: Natoms
+    double precision, intent(in) :: dxi(3,Natoms), mass(Natoms)
+    double precision, intent(in) :: beta
+    double precision, intent(out) :: fs
+
+    double precision :: pi
+    integer :: i, j
+
+    pi = dacos(-1.0d0)
+
+    fs = 0.0d0
+    do i = 1, 3
+        do j = 1, Natoms
+            fs = fs + dxi(i,j) * dxi(i,j) / mass(j)
+        end do
+    end do
+    fs = sqrt(fs / (2.0d0 * pi * beta))
+
+end subroutine get_recrossing_flux
+
+! Return the velocity used to compute the recrossing factor.
+! Parameters:
+!   p - The momentum of each bead in each atom
+!   mass - The mass of each atom
+!   dxi - The gradient of the reaction coordinate
+!   Natoms - The number of atoms in the molecular system
+!   Nbeads - The number of beads to use per atom
+! Returns:
+!   vs - The velocity used to compute the recrossing factor
+subroutine get_recrossing_velocity(p, mass, dxi, Natoms, Nbeads, vs)
+
+    implicit none
+    integer, intent(in) :: Natoms, Nbeads
+    double precision, intent(in) :: p(3,Natoms,Nbeads), dxi(3,Natoms), mass(Natoms)
+    double precision, intent(out) :: vs
+
+    integer :: i, j, k
+
+    vs = 0.0d0
+    do i = 1, 3
+        do j = 1, Natoms
+            do k = 1, Nbeads
+                vs = vs + dxi(i,j) * p(i,j,k) / mass(j)
+            end do
+        end do
+    end do
+    vs = vs / Nbeads
+
+end subroutine get_recrossing_velocity
 
 ! Return a pseudo-random sampling of momenta from a Boltzmann distribution at
 ! the temperature of interest.
