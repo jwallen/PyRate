@@ -139,6 +139,11 @@ subroutine compute_transmission_coefficient(beta, Natoms, Nbeads, dt, xi_current
         xi_current, mode)
     call get_potential(q, xi, dxi, d2xi, V, dVdq, Natoms, Nbeads, potential)
 
+    if (save_parent_trajectory .eq. 1) then
+        open(unit=77,file='parent.xyz')
+        open(unit=88,file='parent_centroid.xyz')
+    end if
+
     ! Allow parent trajectory to relax in the presence of an
     ! Andersen thermostat, with centroids constrained to the transition
     ! state dividing surface
@@ -152,6 +157,7 @@ subroutine compute_transmission_coefficient(beta, Natoms, Nbeads, dt, xi_current
             xi_current, mode)
         call random(rn)
         if (rn .lt. threq) call sample_momentum(p, mass, beta, Natoms, Nbeads)
+        if (save_parent_trajectory .eq. 1) call update_vmd_output(q, Natoms, Nbeads, 77, 88)
 
         ! DEBUG: Check that energy is conserved
         !call get_ring_polymer_energy(q, mass, beta, Natoms, Nbeads, Ering)
@@ -178,6 +184,11 @@ subroutine compute_transmission_coefficient(beta, Natoms, Nbeads, dt, xi_current
 
                 do pfactor = -1, 1, 2
 
+                    if (child_count .eq. 1 .and. pfactor .eq. -1 .and. save_child_trajectories .eq. 1) then
+                        open(unit=777,file='child.xyz')
+                        open(unit=888,file='child_centroid.xyz')
+                    end if
+
                     q_child(:,:,:) = q
                     p_child(:,:,:) = p_temp * pfactor
                     call get_centroid(q_child, Natoms, Nbeads, centroid)
@@ -197,7 +208,16 @@ subroutine compute_transmission_coefficient(beta, Natoms, Nbeads, dt, xi_current
                             Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
                             breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
                             xi_current, mode)
+                        if (child_count .eq. 1 .and. pfactor .eq. -1 .and. save_child_trajectories .eq. 1) then
+                            call update_vmd_output(q_child, Natoms, Nbeads, 777, 888)
+                        end if
+                        if (xi_child .gt. 0) kappa_num(child_step) = kappa_num(child_step) + vs / fs
                     end do
+
+                    if (child_count .eq. 1 .and. pfactor .eq. -1 .and. save_child_trajectories .eq. 1) then
+                        close(777)
+                        close(888)
+                    end if
 
                 end do
 
@@ -215,8 +235,14 @@ subroutine compute_transmission_coefficient(beta, Natoms, Nbeads, dt, xi_current
             xi_current, mode)
         call random(rn)
         if (rn .lt. threq) call sample_momentum(p_temp, mass, beta, Natoms, Nbeads)
+        if (save_parent_trajectory .eq. 1) call update_vmd_output(q, Natoms, Nbeads, 77, 88)
     end do
     write (*,fmt='(A)') 'Finished evolution of parent trajectory.'
+
+    if (save_parent_trajectory .eq. 1) then
+        close(77)
+        close(88)
+    end if
 
 end subroutine compute_transmission_coefficient
 
@@ -915,6 +941,41 @@ subroutine get_radius_of_gyration(q, Natoms, Nbeads, R)
     end do
 
 end subroutine get_radius_of_gyration
+
+! Write the given position to a pair of VMD output files: one for all beads and
+! one for the centroid.
+! Parameters:
+!   q - The position of each bead in each atom
+!   Natoms - The number of atoms in the molecular system
+!   Nbeads - The number of beads to use per atom
+!   beads_file_number - The output file number to save all beads to
+!   centroid_file_number - The output file number to save the centroids to
+subroutine update_vmd_output(q, Natoms, Nbeads, beads_file_number, centroid_file_number)
+
+    integer, intent(in) :: Natoms, Nbeads
+    double precision, intent(in) :: q(3,Natoms,Nbeads)
+    integer, intent(in) :: beads_file_number, centroid_file_number
+    integer :: j, k
+
+    double precision :: centroid(3,Natoms)
+
+    call get_centroid(q, Natoms, Nbeads, centroid)
+
+    write(beads_file_number,fmt='(I6)') Natoms * Nbeads
+    write(beads_file_number,fmt='(A)')
+    do j = 1, Natoms
+        do k = 1, Nbeads
+            write(beads_file_number,fmt='(I4,3F11.6)') j, q(1,j,k), q(2,j,k), q(3,j,k)
+        end do
+    end do
+
+    write(centroid_file_number,fmt='(I6)') Natoms
+    write(centroid_file_number,fmt='(A)')
+    do j = 1, Natoms
+        write(centroid_file_number,fmt='(I4,3F11.6)') j, centroid(1,j), centroid(2,j), centroid(3,j)
+    end do
+
+end subroutine
 
 ! Compute a pseudo-random number uniformly distributed in [0,1].
 ! Returns:
