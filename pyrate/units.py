@@ -367,3 +367,82 @@ def convertRateCoefficient(quantity, units):
         raise ValueError('Invalid output units "{0}" for {1}.'.format(units, unittype))
     
     return quantity.rescale(units)
+
+################################################################################
+
+# Allowed length units
+LENGTH_DIMENSIONS = [pq.m.simplified.dimensionality]
+AREA_DIMENSIONS = [(pq.m * pq.m).simplified.dimensionality]
+VOLUME_DIMENSIONS = [(pq.m * pq.m * pq.m).simplified.dimensionality]
+
+def convertLength(quantity, units):
+    """
+    Convert a given `quantity` -- a :class:`Quantity` object with units of 
+    length -- to the given `units` of length. A :class:`ValueError` is raised
+    if this conversion is not successful.
+    """
+    if isinstance(quantity, tuple):
+        quantity = pq.Quantity(quantity[0], quantity[1])
+    elif not isinstance(quantity, pq.Quantity):
+        raise ValueError('Invalid value "{0}" for quantity; must be a Quantity object with units of length.'.format(quantity))
+    
+    if isinstance(units, str):
+        units = pq.Quantity(1.0, units)
+    
+    inputDimensionality = quantity.units.dimensionality
+    outputDimensionality = units.dimensionality
+
+    if inputDimensionality.simplified not in LENGTH_DIMENSIONS:
+        raise ValueError('Invalid input units "{0}" for length.'.format(quantity.units))
+    if outputDimensionality.simplified not in LENGTH_DIMENSIONS:
+        raise ValueError('Invalid output units "{0}" for length.'.format(units))
+        
+    return quantity.rescale(units)
+
+def convertArea(quantity, units):
+    """
+    Convert a given `quantity` -- a :class:`Quantity` object with units of 
+    area -- to the given `units` of area. A :class:`ValueError` is raised if
+    this conversion is not successful.
+    """
+    if isinstance(quantity, tuple):
+        quantity = pq.Quantity(quantity[0], quantity[1])
+    elif not isinstance(quantity, pq.Quantity):
+        raise ValueError('Invalid value "{0}" for quantity; must be a Quantity object with units of area.'.format(quantity))
+    
+    if isinstance(units, str):
+        units = pq.Quantity(1.0, units)
+    
+    inputDimensionality = quantity.units.dimensionality
+    outputDimensionality = units.dimensionality
+
+    if inputDimensionality.simplified not in AREA_DIMENSIONS:
+        raise ValueError('Invalid input units "{0}" for area.'.format(quantity.units))
+    if outputDimensionality.simplified not in AREA_DIMENSIONS:
+        raise ValueError('Invalid output units "{0}" for area.'.format(units))
+        
+    return quantity.rescale(units)
+
+def convertVolume(quantity, units):
+    """
+    Convert a given `quantity` -- a :class:`Quantity` object with units of 
+    volume -- to the given `units` of volume. A :class:`ValueError` is raised
+    if this conversion is not successful.
+    """
+    if isinstance(quantity, tuple):
+        quantity = pq.Quantity(quantity[0], quantity[1])
+    elif not isinstance(quantity, pq.Quantity):
+        raise ValueError('Invalid value "{0}" for quantity; must be a Quantity object with units of volume.'.format(quantity))
+    
+    if isinstance(units, str):
+        units = pq.Quantity(1.0, units)
+    
+    inputDimensionality = quantity.units.dimensionality
+    outputDimensionality = units.dimensionality
+
+    if inputDimensionality.simplified not in VOLUME_DIMENSIONS:
+        raise ValueError('Invalid input units "{0}" for volume.'.format(quantity.units))
+    if outputDimensionality.simplified not in VOLUME_DIMENSIONS:
+        raise ValueError('Invalid output units "{0}" for volume.'.format(units))
+        
+    return quantity.rescale(units)
