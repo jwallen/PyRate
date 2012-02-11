@@ -96,3 +96,60 @@ cdef class LennardJones:
                     self._epsilon = float(value) * constants.kB
                 else:
                     self._epsilon = float(units.convertEnergy(value, "J"))
+
+################################################################################
+
+cdef class Species:
+    """
+    A chemical species, representing a local minimum on a potential energy
+    surface. The attributes are:
+
+    ======================= ====================================================
+    Attribute               Description
+    ======================= ====================================================
+    `label`                 An identifying string label
+    `thermo`                The heat capacity model for the species
+    `statmech`              The statistical mechanics model for the species
+    `lennardJones`          The Lennard-Jones collision parameters for the species
+    `molecularWeight`       The molecular weight of the species
+    `collisionModel`        The collisional energy transfer model to use
+    ======================= ====================================================
+    
+    """
+
+    def __init__(self, label='', thermo=None, statmech=None, lennardJones=None, molecularWeight=None, collisionModel=None):
+        self.label = label
+        self.thermo = thermo
+        self.statmech = statmech
+        self.lennardJones = lennardJones
+        self.molecularWeight = molecularWeight
+        self.collisionModel = collisionModel
+
+    def __str__(self):
+        """
+        Return a string representation of the species.
+        """
+        return self.label
+
+    def __repr__(self):
+        """
+        Return a string representation of the species.
+        """
+        molecularWeight = '({0:g},"{1}")'.format(float(self.molecularWeight), str(self.molecularWeight.dimensionality))
+        return 'Species(label={0!r}, thermo={1!r}, statmech={2!r}, lennardJones={3!r}, molecularWeight={4}, collisionModel={5!r})'.format(self.label, self.thermo, self.statmech, self.lennardJones, molecularWeight, self.collisionModel)
+
+    def __reduce__(self):
+        """
+        A helper function used when pickling a Species object.
+        """
+        return (Species, (self.label, self.thermo, self.statmech, self.lennardJones, self.molecularWeight, self.collisionModel))
+
+    property molecularWeight:
+        """The molecular weight of the molecule."""
+        def __get__(self):
+            return pq.Quantity(self._molecularWeight, pq.u)
+        def __set__(self, value):
+            if value is None or value == 0:
+                self._molecularWeight = 0.0 
+            else:
+                self._molecularWeight = float(units.convertMass(value, "amu"))

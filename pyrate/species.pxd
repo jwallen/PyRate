@@ -26,6 +26,21 @@
 #
 ################################################################################
 
+from pyrate.thermo.model cimport HeatCapacityModel
+
+################################################################################
+
 cdef class LennardJones:
 
     cdef double _sigma, _epsilon
+
+################################################################################
+
+cdef class Species:
+    
+    cdef public str label
+    cdef public HeatCapacityModel thermo
+    cdef public object statmech
+    cdef public LennardJones lennardJones
+    cdef double _molecularWeight
+    cdef public object collisionModel
