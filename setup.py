@@ -94,6 +94,7 @@ ext_modules = [
     Extension('pyrate.statmech.torsion', ['pyrate/statmech/torsion.pyx']),
     Extension('pyrate.thermo.converter', ['pyrate/thermo/converter.pyx']),
     Extension('pyrate.thermo.model', ['pyrate/thermo/model.pyx']),
+    Extension('pyrate.species', ['pyrate/species.pyx']),
 ]
 for module in ext_modules:
     module.pyrex_directives = {'embedsignature': True}
