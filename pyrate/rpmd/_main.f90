@@ -564,9 +564,12 @@ subroutine constrain_to_dividing_surface(p, q, dxi, mass, &
 
         dx = sigma / dsigma
         mult = mult - dx
-        if (dabs(dx) .lt. 1.0d-9 .or. dabs(sigma) .lt. 1.0d-13) exit
+        if (dabs(dx) .lt. 1.0d-8 .or. dabs(sigma) .lt. 1.0d-10) exit
 
-        if (iter .eq. maxiter) write (*,fmt='(A)') 'SHAKE exceeded maximum number of iterations.'
+        if (iter .eq. maxiter) then
+            write (*,fmt='(A)') 'Warning: SHAKE exceeded maximum number of iterations.'
+            write (*,fmt='(A,E13.5,A,E13.5)') 'dx = ', dx, ', sigma = ', sigma
+        end if
 
     end do
 
