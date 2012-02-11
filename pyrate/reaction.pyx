@@ -82,3 +82,48 @@ cdef class TransitionState:
                 self._frequency = 0.0 
             else:
                 self._frequency = float(units.convertFrequency(value, pq.wavenumber))
+
+################################################################################
+
+cdef class Reaction:
+    """
+    A chemical reaction. The attributes are:
+    
+    ======================= ====================================================
+    Attribute               Description
+    ======================= ====================================================
+    `reactants`             The list of reactant species
+    `products`              The list of product species
+    `kinetics`              The kinetics model to use for the reaction
+    `reversible`            ``True`` if the reaction is reversible, ``False`` if not
+    `transitionState`       Information about the transition state
+    ======================= ====================================================
+    
+    """
+    
+    def __init__(self, reactants=None, products=None, kinetics=None, reversible=True, transitionState=None):
+        self.reactants = reactants or []
+        self.products = products or []
+        self.kinetics = kinetics
+        self.reversible = reversible
+        self.transitionState = transitionState
+
+    def __str__(self):
+        """
+        Return a string representation of the reaction, in the form 'A + B <=> C + D'.
+        """
+        arrow = ' <=> '
+        if not self.reversible: arrow = ' -> '
+        return arrow.join([' + '.join([str(s) for s in self.reactants]), ' + '.join([str(s) for s in self.products])])
+
+    def __repr__(self):
+        """
+        Return a string representation of the reaction.
+        """
+        return 'Reaction(reactants={0!r}, products={1!r}, kinetics={2!r}, reversible={3!r}, transitionState={4!r})'.format(self.reactants, self.products, self.kinetics, self.reversible, self.transitionState)
+
+    def __reduce__(self):
+        """
+        A helper function used when pickling an object.
+        """
+        return (Reaction, (self.reactants, self.products, self.kinetics, self.reversible, self.transitionState))

@@ -26,8 +26,22 @@
 #
 ################################################################################
 
+from pyrate.kinetics.model cimport KineticsModel
+    
+################################################################################
+
 cdef class TransitionState:
     
     cdef public str label
     cdef public object statmech
     cdef double _frequency
+
+################################################################################
+
+cdef class Reaction:
+    
+    cdef public list reactants
+    cdef public list products
+    cdef public bint reversible
+    cdef public TransitionState transitionState
+    cdef public KineticsModel kinetics
