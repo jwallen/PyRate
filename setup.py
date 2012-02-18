@@ -115,3 +115,16 @@ setup(
     requires = ['cython (>=0.15)', 'numpy (>=1.5.0)', 'scipy (>=0.9.0)', 'quantities (>=0.9.0)'],
     provides = ['pyrate'],
 )
+
+################################################################################
+
+from numpy.distutils.core import setup, Extension
+
+# The Fortran extension modules to build using f2py
+ext_modules = [
+    Extension('pyrate.rpmd._surface', ['pyrate/rpmd/_surface.f90']),
+]
+
+setup(
+    ext_modules = ext_modules,
+)
