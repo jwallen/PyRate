@@ -350,3 +350,227 @@ subroutine transition_state_hessian(position, Natoms, Nts, &
     end do
 
 end subroutine transition_state_hessian
+
+! Return the center of mass of a reactant, as defined by a list of indices.
+! This function assumes that the mass fractions are already normalized.
+! Parameters:
+!   position - A 3 x Natoms array of atomic positions
+!   massfrac - The mass fraction of each atom
+!   Natoms - The number of atoms
+!   atomlist - An array of indices for each atom in the reactant
+!   Natomlist - The length of atomlist
+! Returns:
+!   cm - The center of mass of the atoms in atomlist
+subroutine reactant_center_of_mass(position, massfrac, Natoms, atomlist, Natomlist, cm)
+
+    implicit none
+    integer, intent(in) :: Natoms, Natomlist
+    double precision, intent(in) :: position(3,Natoms)
+    double precision, intent(in) :: massfrac(Natoms)
+    integer, intent(in) :: atomlist(Natomlist)
+    double precision, intent(out) :: cm(3)
+
+    integer :: n, atom, i
+
+    cm(:) = 0.0
+    do n = 1, Natomlist
+        atom = atomlist(n)
+        do i = 1, 3
+            cm(i) = cm(i) + massfrac(atom) * position(i,atom)
+        end do
+    end do
+
+end subroutine reactant_center_of_mass
+
+! Return the value of the reactants dividing surface function.
+! This function assumes that the mass fractions are already normalized.
+! Parameters:
+!   position - A 3 x Natoms array of atomic positions
+!   Natoms - The number of atoms
+!   massfrac - The mass fraction of each atom
+!   reactant1_atoms - An array of indices for each atom in the first reactant
+!   Nreactant1_atoms - The number of atoms in the first reactant
+!   reactant2_atoms - An array of indices for each atom in the second reactant
+!   Nreactant2_atoms - The number of atoms in the second reactant
+! Returns:
+!   s0 - The value of the reactants dividing surface function
+subroutine reactants_value(position, Natoms, Rinf, massfrac, &
+  reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+  s0)
+
+    implicit none
+    integer, intent(in) :: Natoms, Nreactant1_atoms, Nreactant2_atoms
+    double precision, intent(in) :: position(3,Natoms)
+    double precision, intent(in) :: Rinf
+    double precision, intent(in) :: massfrac(Natoms)
+    integer, intent(in) :: reactant1_atoms(Nreactant1_atoms), reactant2_atoms(Nreactant2_atoms)
+    double precision, intent(out) :: s0
+
+    double precision :: cm1(3), cm2(3)
+    double precision :: Rx, Ry, Rz, R
+
+    call reactant_center_of_mass(position, massfrac, Natoms, reactant1_atoms, Nreactant1_atoms, cm1)
+    call reactant_center_of_mass(position, massfrac, Natoms, reactant2_atoms, Nreactant2_atoms, cm2)
+
+    Rx = cm2(1) - cm1(1)
+    Ry = cm2(2) - cm1(2)
+    Rz = cm2(3) - cm1(3)
+    R = sqrt(Rx * Rx + Ry * Ry + Rz * Rz)
+
+    s0 = Rinf - R
+
+end subroutine reactants_value
+
+! Return the gradient of the reactants dividing surface function.
+! This function assumes that the mass fractions are already normalized.
+! Parameters:
+!   position - A 3 x Natoms array of atomic positions
+!   Natoms - The number of atoms
+!   massfrac - The mass fraction of each atom
+!   reactant1_atoms - An array of indices for each atom in the first reactant
+!   Nreactant1_atoms - The number of atoms in the first reactant
+!   reactant2_atoms - An array of indices for each atom in the second reactant
+!   Nreactant2_atoms - The number of atoms in the second reactant
+! Returns:
+!   ds0 - The gradient of the reactants dividing surface function
+subroutine reactants_gradient(position, Natoms, massfrac, &
+  reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+  ds0)
+
+    implicit none
+    integer, intent(in) :: Natoms, Nreactant1_atoms, Nreactant2_atoms
+    double precision, intent(in) :: position(3,Natoms)
+    double precision, intent(in) :: massfrac(Natoms)
+    integer, intent(in) :: reactant1_atoms(Nreactant1_atoms), reactant2_atoms(Nreactant2_atoms)
+    double precision, intent(out) :: ds0(3,Natoms)
+
+    double precision :: cm1(3), cm2(3)
+    double precision :: Rx, Ry, Rz, Rinv
+    integer :: n, atom
+
+    call reactant_center_of_mass(position, massfrac, Natoms, reactant1_atoms, Nreactant1_atoms, cm1)
+    call reactant_center_of_mass(position, massfrac, Natoms, reactant2_atoms, Nreactant2_atoms, cm2)
+
+    Rx = cm2(1) - cm1(1)
+    Ry = cm2(2) - cm1(2)
+    Rz = cm2(3) - cm1(3)
+    Rinv = 1.0/sqrt(Rx * Rx + Ry * Ry + Rz * Rz)
+
+    do n = 1, size(reactant1_atoms)
+        atom = reactant1_atoms(n)
+        ds0(1,atom) = Rx * Rinv * massfrac(atom)
+        ds0(2,atom) = Ry * Rinv * massfrac(atom)
+        ds0(3,atom) = Rz * Rinv * massfrac(atom)
+    end do
+    do n = 1, size(reactant2_atoms)
+        atom = reactant2_atoms(n)
+        ds0(1,atom) = -Rx * Rinv * massfrac(atom)
+        ds0(2,atom) = -Ry * Rinv * massfrac(atom)
+        ds0(3,atom) = -Rz * Rinv * massfrac(atom)
+    end do
+
+end subroutine reactants_gradient
+
+! Return the Hessian of the reactants dividing surface function.
+! This function assumes that the mass fractions are already normalized.
+! Parameters:
+!   position - A 3 x Natoms array of atomic positions
+!   Natoms - The number of atoms
+!   massfrac - The mass fraction of each atom
+!   reactant1_atoms - An array of indices for each atom in the first reactant
+!   Nreactant1_atoms - The number of atoms in the first reactant
+!   reactant2_atoms - An array of indices for each atom in the second reactant
+!   Nreactant2_atoms - The number of atoms in the second reactant
+! Returns:
+!   d2s0 - The Hessian of the reactants dividing surface function
+subroutine reactants_hessian(position, Natoms, massfrac, &
+  reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+  d2s0)
+
+    implicit none
+    integer, intent(in) :: Natoms, Nreactant1_atoms, Nreactant2_atoms
+    double precision, intent(in) :: position(3,Natoms)
+    double precision, intent(in) :: massfrac(Natoms)
+    integer, intent(in) :: reactant1_atoms(Nreactant1_atoms), reactant2_atoms(Nreactant2_atoms)
+    double precision, intent(out) :: d2s0(3,Natoms,3,Natoms)
+
+    double precision :: cm1(3), cm2(3)
+    double precision :: Rx, Ry, Rz, Rinv
+    double precision :: dxx, dyy, dzz, dxy, dxz, dyz, massfactor
+    integer :: n1, atom1, n2, atom2
+
+    call reactant_center_of_mass(position, massfrac, Natoms, reactant1_atoms, Nreactant1_atoms, cm1)
+    call reactant_center_of_mass(position, massfrac, Natoms, reactant2_atoms, Nreactant2_atoms, cm2)
+
+    Rx = cm2(1) - cm1(1)
+    Ry = cm2(2) - cm1(2)
+    Rz = cm2(3) - cm1(3)
+    Rinv = 1.0/sqrt(Rx * Rx + Ry * Ry + Rz * Rz)
+
+    dxx = -(Ry * Ry + Rz * Rz) * (Rinv * Rinv * Rinv)
+    dyy = -(Rz * Rz + Rx * Rx) * (Rinv * Rinv * Rinv)
+    dzz = -(Rx * Rx + Ry * Ry) * (Rinv * Rinv * Rinv)
+    dxy = Rx * Ry * (Rinv * Rinv * Rinv)
+    dxz = Rx * Rz * (Rinv * Rinv * Rinv)
+    dyz = Ry * Rz * (Rinv * Rinv * Rinv)
+
+    do n1 = 1, Nreactant1_atoms
+        atom1 = reactant1_atoms(n1)
+        do n2 = 1, Nreactant1_atoms
+            atom2 = reactant1_atoms(n2)
+            massfactor = massfrac(atom1) * massfrac(atom2)
+            d2s0(1,atom1,1,atom2) = dxx * massfactor
+            d2s0(1,atom1,2,atom2) = dxy * massfactor
+            d2s0(1,atom1,3,atom2) = dxz * massfactor
+            d2s0(2,atom1,1,atom2) = dxy * massfactor
+            d2s0(2,atom1,2,atom2) = dyy * massfactor
+            d2s0(2,atom1,3,atom2) = dyz * massfactor
+            d2s0(3,atom1,1,atom2) = dxz * massfactor
+            d2s0(3,atom1,2,atom2) = dyz * massfactor
+            d2s0(3,atom1,3,atom2) = dzz * massfactor
+        end do
+        do n2 = 1, Nreactant2_atoms
+            atom2 = reactant2_atoms(n2)
+            massfactor = massfrac(atom1) * massfrac(atom2)
+            d2s0(1,atom1,1,atom2) = -dxx * massfactor
+            d2s0(1,atom1,2,atom2) = -dxy * massfactor
+            d2s0(1,atom1,3,atom2) = -dxz * massfactor
+            d2s0(2,atom1,1,atom2) = -dxy * massfactor
+            d2s0(2,atom1,2,atom2) = -dyy * massfactor
+            d2s0(2,atom1,3,atom2) = -dyz * massfactor
+            d2s0(3,atom1,1,atom2) = -dxz * massfactor
+            d2s0(3,atom1,2,atom2) = -dyz * massfactor
+            d2s0(3,atom1,3,atom2) = -dzz * massfactor
+        end do
+    end do
+    do n1 = 1, Nreactant2_atoms
+        atom1 = reactant2_atoms(n1)
+        do n2 = 1, Nreactant1_atoms
+            atom2 = reactant1_atoms(n2)
+            massfactor = massfrac(atom1) * massfrac(atom2)
+            d2s0(1,atom1,1,atom2) = -dxx * massfactor
+            d2s0(1,atom1,2,atom2) = -dxy * massfactor
+            d2s0(1,atom1,3,atom2) = -dxz * massfactor
+            d2s0(2,atom1,1,atom2) = -dxy * massfactor
+            d2s0(2,atom1,2,atom2) = -dyy * massfactor
+            d2s0(2,atom1,3,atom2) = -dyz * massfactor
+            d2s0(3,atom1,1,atom2) = -dxz * massfactor
+            d2s0(3,atom1,2,atom2) = -dyz * massfactor
+            d2s0(3,atom1,3,atom2) = -dzz * massfactor
+        end do
+        do n2 = 1, Nreactant2_atoms
+            atom2 = reactant2_atoms(n2)
+            massfactor = massfrac(atom1) * massfrac(atom2)
+            d2s0(1,atom1,1,atom2) = dxx * massfactor
+            d2s0(1,atom1,2,atom2) = dxy * massfactor
+            d2s0(1,atom1,3,atom2) = dxz * massfactor
+            d2s0(2,atom1,1,atom2) = dxy * massfactor
+            d2s0(2,atom1,2,atom2) = dyy * massfactor
+            d2s0(2,atom1,3,atom2) = dyz * massfactor
+            d2s0(3,atom1,1,atom2) = dxz * massfactor
+            d2s0(3,atom1,2,atom2) = dyz * massfactor
+            d2s0(3,atom1,3,atom2) = dzz * massfactor
+        end do
+    end do
+
+end subroutine reactants_hessian
