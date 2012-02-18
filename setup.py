@@ -99,6 +99,7 @@ ext_modules = [
 ]
 for module in ext_modules:
     module.pyrex_directives = {'embedsignature': True}
+    module.pyrex_c_in_temp = True
 
 setup(
     name = 'PyRate',

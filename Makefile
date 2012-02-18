@@ -31,7 +31,7 @@
 all: build
 
 build:
-	python setup.py build_ext --build-lib . --build-temp build --pyrex-c-in-temp
+	python setup.py build_ext --build-lib . --build-temp build
 	
 install:
 	python setup.py install
