@@ -122,6 +122,7 @@ from numpy.distutils.core import setup, Extension
 
 # The Fortran extension modules to build using f2py
 ext_modules = [
+    Extension('pyrate.rpmd._main', ['pyrate/rpmd/_main.pyf', 'pyrate/rpmd/_main.f90', 'pyrate/rpmd/_surface.f90'], libraries = ['fftw3']),
     Extension('pyrate.rpmd._surface', ['pyrate/rpmd/_surface.f90']),
 ]
 
