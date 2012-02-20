@@ -136,6 +136,7 @@ class RPMD:
         self.beta = 4.35974417e-18 / (constants.kB * T)
         self.dt = dt / 2.418884326505e-5
         self.Nbeads = Nbeads
+        self.kforce = 0.0
         equilibrationTime /= 2.418884326505e-5
         parentEvolutionTime /= 2.418884326505e-5
         childEvolutionTime /= 2.418884326505e-5
@@ -180,7 +181,7 @@ class RPMD:
         # Equilibrate parent trajectory while constraining to dividing surface
         # and sampling from Andersen thermostat
         logging.info('Equilibrating parent trajectory for {0:g} ps...'.format(equilibrationSteps * self.dt * 2.418884326505e-5))
-        rpmd_evolve(p, q, self.beta, self.dt, xi_current, self.mass, self.potential,
+        rpmd_evolve(p, q, self.beta, self.dt, xi_current, self.mass, self.kforce, self.potential,
             self.mode, 1, 1, equilibrationSteps, saveParentTrajectory,
             self.reactants.Rinf, self.reactants.massFractions, self.reactants.reactant1Atoms, self.reactants.reactant2Atoms,
             self.transitionState.formingBonds, self.transitionState.formingBondLengths,
@@ -241,7 +242,7 @@ class RPMD:
             # Further evolve parent trajectory while constraining to dividing
             # surface and sampling from Andersen thermostat
             logging.info('Evolving parent trajectory to {0:g} ps...'.format((iter+1) * childSamplingSteps * self.dt * 2.418884326505e-5))
-            rpmd_evolve(p, q, self.beta, self.dt, xi_current, self.mass, self.potential,
+            rpmd_evolve(p, q, self.beta, self.dt, xi_current, self.mass, self.kforce, self.potential,
                 self.mode, 1, 1, childSamplingSteps, saveParentTrajectory,
                 self.reactants.Rinf, self.reactants.massFractions, self.reactants.reactant1Atoms, self.reactants.reactant2Atoms,
                 self.transitionState.formingBonds, self.transitionState.formingBondLengths,
@@ -271,52 +272,9 @@ class RPMD:
         
         return kappa_num[-1] / kappa_denom
     
-    def evolve(self, p, q, V, dVdq, xi, dxi, d2xi, constrain=False):
-        xi = numpy.array(xi, order='F')
-        evolve(p, q, V, dVdq, xi, dxi, d2xi, constrain,
-            self.beta, self.dt, self.reactants.mass, self.potential,
-            self.reactants.Rinf, self.reactants.massFractions, self.reactants.reactant1Atoms, self.reactants.reactant2Atoms,
-            self.transitionState.formingBonds, self.transitionState.formingBondLengths,
-            self.transitionState.breakingBonds, self.transitionState.breakingBondLengths,
-            self.xi_current, self.mode)
-        return xi
-    
-    def getReactionCoordinate(self, centroid):
-        """
-        Return the value and gradient of the reaction coordinate at the
-        given `centroid`.
-        """
-        return get_reaction_coordinate(centroid, 
-            self.reactants.Rinf, self.reactants.massFractions, self.reactants.reactant1Atoms, self.reactants.reactant2Atoms,
-            self.transitionState.formingBonds, self.transitionState.formingBondLengths,
-            self.transitionState.breakingBonds, self.transitionState.breakingBondLengths,
-            self.xi_current, self.mode)
-        
-    def getPotential(self, q, xi, dxi, d2xi):
-        """
-        Return the potential and the force of the system of ring polymers at
-        the given position `q`.
-        """
-        V, dVdq = get_potential(q, xi, dxi, d2xi)
-        return V, dVdq
-
     def sampleMomentum(self):
         """
         Return a pseudo-random sampling of momenta from a Boltzmann 
         distribution at the temperature of interest.
         """
         return sample_momentum(self.mass, self.beta, self.Nbeads)
-
-    def getCentroid(self, position):
-        """
-        Return the centroid of each ring polymer in the system of ring polymers
-        at a given `position`.
-        """
-        centroid = numpy.zeros((3,self.Natoms))
-        for i in range(3):
-            for j in range(self.Natoms):
-                for k in range(self.Nbeads):
-                    centroid[i,j] += position[i,j,k]
-                centroid[i,j] /= self.Nbeads
-        
-        return centroid

@@ -38,6 +38,7 @@
 !   dt - The time step to use in the simulation
 !   xi_current - The maximum of the reaction coordinate at this temperature
 !   mass - The mass of each atom in the molecular system
+!   kforce - The force constant of the umbrella potential
 !   potential - A function that evaluates the potential and force for a given position
 !   mode - 1 for umbrella integration, 2 for recrossing factor
 !   constrain - 1 to constrain to dividing surface, 0 otherwise
@@ -57,7 +58,7 @@
 !   breaking_bonds - An array listing the pairs of indices of each breaking bond in each transition state
 !   breaking_bond_lengths - An array listing the lengths of each breaking bond in each transition state
 !   number_of_breaking_bonds - The number of bonds being broken by the reaction
-subroutine rpmd_evolve(p, q, beta, Natoms, Nbeads, dt, xi_current, mass, potential, &
+subroutine rpmd_evolve(p, q, beta, Natoms, Nbeads, dt, xi_current, mass, kforce, potential, &
   mode, constrain, thermostat, steps, save_trajectory, &
   Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
   Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
@@ -72,6 +73,7 @@ subroutine rpmd_evolve(p, q, beta, Natoms, Nbeads, dt, xi_current, mass, potenti
     double precision, intent(in) :: dt
     double precision, intent(in) :: xi_current
     double precision, intent(in) :: mass(Natoms)
+    double precision, intent(in) :: kforce
     integer, intent(in) :: mode, constrain, thermostat, steps, save_trajectory
     ! Reactant dividing surface
     double precision, intent(in) :: massfrac(Natoms)
@@ -112,11 +114,12 @@ subroutine rpmd_evolve(p, q, beta, Natoms, Nbeads, dt, xi_current, mass, potenti
         Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
         breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
         xi_current, mode)
-    call get_potential(q, xi, dxi, d2xi, V, dVdq, Natoms, Nbeads, potential)
+    call get_potential(q, xi, dxi, d2xi, V, dVdq, Natoms, Nbeads, potential, &
+        beta, mass, kforce, xi_current, mode)
 
     do step = 1, steps
         call evolve(p, q, V, dVdq, xi, dxi, d2xi, Natoms, Nbeads, constrain, &
-            beta, dt, mass, potential, &
+            beta, dt, mass, kforce, potential, &
             Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
             Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
             breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
@@ -204,9 +207,10 @@ subroutine rpmd_evolve_recrossing(p, q, beta, Natoms, Nbeads, dt, xi_current, ma
     double precision :: V(Nbeads), dVdq(3,Natoms,Nbeads)
     double precision :: xi, dxi(3,Natoms), d2xi(3,Natoms,3,Natoms)
     double precision :: centroid(3,Natoms)
-    double precision :: Ering, Ek, vs, fs
+    double precision :: Ering, Ek, vs, fs, kforce
     integer :: step, mode
 
+    kforce = 0.0d0
     mode = 2
     Ering = 0.0d0
     Ek = 0.0d0
@@ -225,7 +229,8 @@ subroutine rpmd_evolve_recrossing(p, q, beta, Natoms, Nbeads, dt, xi_current, ma
         Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
         breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
         xi_current, mode)
-    call get_potential(q, xi, dxi, d2xi, V, dVdq, Natoms, Nbeads, potential)
+    call get_potential(q, xi, dxi, d2xi, V, dVdq, Natoms, Nbeads, potential, &
+        beta, mass, kforce, xi_current, mode)
 
     call get_recrossing_velocity(p, mass, dxi, Natoms, Nbeads, vs)
     call get_recrossing_flux(mass, dxi, beta, Natoms, fs)
@@ -233,7 +238,7 @@ subroutine rpmd_evolve_recrossing(p, q, beta, Natoms, Nbeads, dt, xi_current, ma
 
     do step = 1, steps
         call evolve(p, q, V, dVdq, xi, dxi, d2xi, Natoms, Nbeads, 0, &
-            beta, dt, mass, potential, &
+            beta, dt, mass, kforce, potential, &
             Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
             Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
             breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
@@ -265,6 +270,7 @@ end subroutine rpmd_evolve_recrossing
 !   beta - The inverse temperature at which to compute the transmission coefficient
 !   dt - The time step to use in the simulation
 !   mass - The mass of each atom in the molecular system
+!   kforce - The force constant of the umbrella potential
 !   potential - A function that evaluates the potential and force for a given position
 !   Rinf - The distance at which the reactant interaction becomes negligible
 !   massfrac - The mass fraction of each atom
@@ -290,7 +296,7 @@ end subroutine rpmd_evolve_recrossing
 !   dxi - The updated gradient of the reaction coordinate
 !   d2xi - The updated Hessian of the reaction coordinate
 subroutine evolve(p, q, V, dVdq, xi, dxi, d2xi, Natoms, Nbeads, constrain, &
-  beta, dt, mass, potential, &
+  beta, dt, mass, kforce, potential, &
   Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
   Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
   breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
@@ -303,7 +309,7 @@ subroutine evolve(p, q, V, dVdq, xi, dxi, d2xi, Natoms, Nbeads, constrain, &
     double precision, intent(inout) :: V(Nbeads), dVdq(3,Natoms,Nbeads)
     double precision, intent(inout) :: xi, dxi(3,Natoms), d2xi(3,Natoms,3,Natoms)
     integer, intent(in) :: constrain
-    double precision, intent(in) :: beta, dt, xi_current, mass(Natoms)
+    double precision, intent(in) :: beta, dt, xi_current, mass(Natoms), kforce
     integer, intent(in) :: mode
     ! Reactant dividing surface
     integer, intent(in) :: Nreactant1_atoms, Nreactant2_atoms
@@ -353,7 +359,8 @@ subroutine evolve(p, q, V, dVdq, xi, dxi, d2xi, Natoms, Nbeads, constrain, &
         xi_current, mode)
 
     ! Update potential using new position
-    call get_potential(q, xi, dxi, d2xi, V, dVdq, Natoms, Nbeads, potential)
+    call get_potential(q, xi, dxi, d2xi, V, dVdq, Natoms, Nbeads, potential, &
+        beta, mass, kforce, xi_current, mode)
 
     ! Update momentum (half time step) using new potential
     p = p - 0.5d0 * dt * dVdq
@@ -740,19 +747,79 @@ end subroutine get_reaction_coordinate
 !   Natoms - The number of atoms in the molecular system
 !   Nbeads - The number of beads to use per atom
 !   potential - A function that evaluates the potential and force for a given position
+!   beta - The inverse temperature at which to compute the transmission coefficient
+!   mass - The mass of each atom in the molecular system
+!   kforce - The force constant for the umbrella potential
+!   xi_current - The maximum of the reaction coordinate at the current temperature
+!   mode - 1 for umbrella integration, 2 for recrossing factor
 ! Returns:
 !   V - The potential of each bead
 !   dVdq - The force exerted on each bead in each atom
-subroutine get_potential(q, xi, dxi, d2xi, V, dVdq, Natoms, Nbeads, potential)
+subroutine get_potential(q, xi, dxi, d2xi, V, dVdq, Natoms, Nbeads, potential, &
+    beta, mass, kforce, xi_current, mode)
 
     implicit none
     external potential
     integer, intent(in) :: Natoms, Nbeads
     double precision, intent(in) :: q(3,Natoms,Nbeads)
     double precision, intent(in) :: xi, dxi(3,Natoms), d2xi(3,Natoms,3,Natoms)
+    double precision, intent(in) :: beta, mass(Natoms), kforce, xi_current
+    integer, intent(in) :: mode
     double precision, intent(out) :: V(Nbeads), dVdq(3,Natoms,Nbeads)
 
+    double precision :: delta, fs, fs2, log_fs, pi, coeff1, coeff2, dhams
+    integer :: i, j, k, i2, j2
+
+    pi = dacos(-1.0d0)
+
     call potential(q, V, dVdq, Natoms, Nbeads)
+
+    if (mode .eq. 1) then
+
+        ! Add umbrella potential and force
+        delta = xi - xi_current
+        do k = 1, Nbeads
+            V(k) = V(k) + 0.5d0 * kforce * delta * delta
+        end do
+        do i = 1, 3
+            do j = 1, Natoms
+                do k = 1, Nbeads
+                    dVdq(i,j,k) = dVdq(i,j,k) + kforce * delta * dxi(i,j)
+                end do
+            end do
+        end do
+
+        ! Add bias term to potential
+        fs2 = 0.0d0
+        do i = 1, 3
+            do j = 1, Natoms
+                fs2 = fs2 + dxi(i,j) * dxi(i,j) / mass(j)
+            end do
+        end do
+        coeff1 = 2.0d0 * pi * beta
+        fs2 = fs2 / coeff1
+        fs = sqrt(fs2)
+        log_fs = log(fs)
+        coeff2 = -1.0d0 / beta
+        do k = 1, Nbeads
+            V(k) = V(k) + coeff2 * log_fs
+        end do
+        do i = 1, 3
+            do j = 1, Natoms
+                dhams = 0.0d0
+                do i2 = 1, 3
+                    do j2 = 1, Natoms
+                        dhams = dhams + d2xi(i2,j2,i,j) * dxi(i2,j2) / mass(j2)
+                    end do
+                end do
+                dhams = dhams * coeff2 / (coeff1 * fs2)
+                do k = 1, Nbeads
+                    dVdq(i,j,k) = dVdq(i,j,k) + dhams
+                end do
+            end do
+        end do
+
+    end if
 
 end subroutine get_potential
 

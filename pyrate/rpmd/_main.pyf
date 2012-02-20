@@ -14,7 +14,7 @@ python module get_potential__user__routines
 end python module get_potential__user__routines
 python module _main ! in 
     interface  ! in :_main
-        subroutine rpmd_evolve(p,q,beta,natoms,nbeads,dt,xi_current,mass,potential,mode,constrain,thermostat,steps,save_trajectory,rinf,massfrac,reactant1_atoms,nreactant1_atoms,reactant2_atoms,nreactant2_atoms,nts,forming_bonds,forming_bond_lengths,number_of_forming_bonds,breaking_bonds,breaking_bond_lengths,number_of_breaking_bonds) ! in :_main:pyrate/rpmd/_main.f90
+        subroutine rpmd_evolve(p,q,beta,natoms,nbeads,dt,xi_current,mass,kforce,potential,mode,constrain,thermostat,steps,save_trajectory,rinf,massfrac,reactant1_atoms,nreactant1_atoms,reactant2_atoms,nreactant2_atoms,nts,forming_bonds,forming_bond_lengths,number_of_forming_bonds,breaking_bonds,breaking_bond_lengths,number_of_breaking_bonds) ! in :_main:pyrate/rpmd/_main.f90
             use get_potential__user__routines
             double precision dimension(3,natoms,nbeads),intent(inout) :: p
             double precision dimension(3,natoms,nbeads),intent(inout),depend(natoms,nbeads) :: q
@@ -24,6 +24,7 @@ python module _main ! in
             double precision intent(in) :: dt
             double precision intent(in) :: xi_current
             double precision dimension(natoms),intent(in),depend(natoms) :: mass
+            double precision intent(in) :: kforce
             external potential
             integer intent(in) :: mode
             integer intent(in) :: constrain
@@ -73,7 +74,7 @@ python module _main ! in
             double precision dimension(steps),intent(inout) :: kappa_num
             double precision intent(inout) :: kappa_denom
         end subroutine rpmd_evolve_recrossing
-        subroutine evolve(p,q,v,dvdq,xi,dxi,d2xi,natoms,nbeads,constrain,beta,dt,mass,potential,rinf,massfrac,reactant1_atoms,nreactant1_atoms,reactant2_atoms,nreactant2_atoms,nts,forming_bonds,forming_bond_lengths,number_of_forming_bonds,breaking_bonds,breaking_bond_lengths,number_of_breaking_bonds,xi_current,mode) ! in :_main:pyrate/rpmd/_main.f90
+        subroutine evolve(p,q,v,dvdq,xi,dxi,d2xi,natoms,nbeads,constrain,beta,dt,mass,kforce,potential,rinf,massfrac,reactant1_atoms,nreactant1_atoms,reactant2_atoms,nreactant2_atoms,nts,forming_bonds,forming_bond_lengths,number_of_forming_bonds,breaking_bonds,breaking_bond_lengths,number_of_breaking_bonds,xi_current,mode) ! in :_main:pyrate/rpmd/_main.f90
             use get_potential__user__routines
             double precision dimension(3,natoms,nbeads),intent(inout) :: p
             double precision dimension(3,natoms,nbeads),intent(inout),depend(natoms,nbeads) :: q
@@ -88,6 +89,7 @@ python module _main ! in
             double precision intent(in) :: beta
             double precision intent(in) :: dt
             double precision dimension(natoms),intent(in),depend(natoms) :: mass
+            double precision intent(in) :: kforce
             external potential
             double precision intent(in) :: rinf
             double precision dimension(natoms),intent(in),depend(natoms) :: massfrac
@@ -167,7 +169,7 @@ python module _main ! in
             double precision intent(in) :: xi_current
             integer intent(in) :: mode
         end subroutine get_reaction_coordinate
-        subroutine get_potential(q,xi,dxi,d2xi,v,dvdq,natoms,nbeads,potential) ! in :_main:pyrate/rpmd/_main.f90
+        subroutine get_potential(q,xi,dxi,d2xi,v,dvdq,natoms,nbeads,potential,beta,mass,kforce,xi_current,mode) ! in :_main:pyrate/rpmd/_main.f90
             use get_potential__user__routines
             double precision dimension(3,natoms,nbeads),intent(in) :: q
             double precision intent(in) :: xi
@@ -178,6 +180,11 @@ python module _main ! in
             integer, optional,intent(in),check(shape(q,1)==natoms),depend(q) :: natoms=shape(q,1)
             integer, optional,intent(in),check(shape(q,2)==nbeads),depend(q) :: nbeads=shape(q,2)
             external potential
+            double precision intent(in) :: beta
+            double precision dimension(natoms),intent(in),depend(natoms) :: mass
+            double precision intent(in) :: kforce
+            double precision intent(in) :: xi_current
+            integer intent(in) :: mode
         end subroutine get_potential
         subroutine get_recrossing_flux(mass,dxi,beta,natoms,fs) ! in :_main:pyrate/rpmd/_main.f90
             double precision dimension(natoms),intent(in) :: mass
