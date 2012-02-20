@@ -271,6 +271,229 @@ subroutine compute_transmission_coefficient(beta, Natoms, Nbeads, dt, xi_current
 
 end subroutine compute_transmission_coefficient
 
+! Conduct an RPMD simulation of a trajectory, with options to constrain the
+! trajectory to the transition state dividing surface and/or apply a
+! thermostat.
+! Parameters:
+!   p - The initial momentum of each bead in each atom
+!   q - The initial position of each bead in each atom
+!   beta - The inverse temperature at which to compute the transmission coefficient
+!   Natoms - The number of atoms in the molecular system
+!   Nbeads - The number of beads to use per atom
+!   dt - The time step to use in the simulation
+!   xi_current - The maximum of the reaction coordinate at this temperature
+!   mass - The mass of each atom in the molecular system
+!   potential - A function that evaluates the potential and force for a given position
+!   mode - 1 for umbrella integration, 2 for recrossing factor
+!   constrain - 1 to constrain to dividing surface, 0 otherwise
+!   thermostat - 1 to apply an Andersen thermostat, 0 for no thermostat
+!   steps - The number of time steps to take in this trajectory
+!   save_trajectory - 1 to save trajectory to disk (slow!), 0 otherwise
+!   Rinf - The distance at which the reactant interaction becomes negligible
+!   massfrac - The mass fraction of each atom
+!   reactant1_atoms - An array of indices for each atom in the first reactant
+!   Nreactant1_atoms - The number of atoms in the first reactant
+!   reactant2_atoms - An array of indices for each atom in the second reactant
+!   Nreactant2_atoms - The number of atoms in the second reactant
+!   Nts - The number of equivalent transition states that define the dividing surface
+!   forming_bonds - An array listing the pairs of indices of each forming bond in each transition state
+!   forming_bond_lengths - An array listing the lengths of each forming bond in each transition state
+!   number_of_forming_bonds - The number of bonds being formed by the reaction
+!   breaking_bonds - An array listing the pairs of indices of each breaking bond in each transition state
+!   breaking_bond_lengths - An array listing the lengths of each breaking bond in each transition state
+!   number_of_breaking_bonds - The number of bonds being broken by the reaction
+subroutine rpmd_evolve(p, q, beta, Natoms, Nbeads, dt, xi_current, mass, potential, &
+  mode, constrain, thermostat, steps, save_trajectory, &
+  Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+  Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+  breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds)
+
+    implicit none
+    external potential
+    ! System parameters
+    double precision, intent(in) :: beta
+    integer, intent(in) :: Natoms, Nbeads
+    double precision, intent(inout) :: p(3,Natoms,Nbeads), q(3,Natoms,Nbeads)
+    double precision, intent(in) :: dt
+    double precision, intent(in) :: xi_current
+    double precision, intent(in) :: mass(Natoms)
+    integer, intent(in) :: mode, constrain, thermostat, steps, save_trajectory
+    ! Reactant dividing surface
+    double precision, intent(in) :: massfrac(Natoms)
+    integer, intent(in) :: Nreactant1_atoms, Nreactant2_atoms
+    integer, intent(in) :: reactant1_atoms(Nreactant1_atoms), reactant2_atoms(Nreactant2_atoms)
+    double precision, intent(in) :: Rinf
+    ! Transition state dividing surface
+    integer, intent(in) :: Nts
+    integer, intent(in) :: number_of_forming_bonds, number_of_breaking_bonds
+    integer, intent(in) :: forming_bonds(Nts,number_of_forming_bonds,2)
+    integer, intent(in) :: breaking_bonds(Nts,number_of_breaking_bonds,2)
+    double precision, intent(in) :: forming_bond_lengths(Nts,number_of_forming_bonds)
+    double precision, intent(in) :: breaking_bond_lengths(Nts,number_of_breaking_bonds)
+
+    double precision :: V(Nbeads), dVdq(3,Natoms,Nbeads)
+    double precision :: xi, dxi(3,Natoms), d2xi(3,Natoms,3,Natoms)
+    double precision :: centroid(3,Natoms)
+    double precision :: threq, rn, Ering, Ek
+    integer :: step
+
+    Ering = 0.0d0
+    Ek = 0.0d0
+
+    ! Average frequency of collisions (Andersen thermostat)
+    threq = 1.0d0 / dsqrt(dble(steps))
+
+    ! Seed the random number generator
+    call random_init()
+
+    if (save_trajectory .eq. 1) then
+        open(unit=77,file='parent.xyz')
+        open(unit=88,file='parent_centroid.xyz')
+    end if
+
+    call get_centroid(q, Natoms, Nbeads, centroid)
+    call get_reaction_coordinate(centroid, xi, dxi, d2xi, Natoms, &
+        Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+        Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+        breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
+        xi_current, mode)
+    call get_potential(q, xi, dxi, d2xi, V, dVdq, Natoms, Nbeads, potential)
+
+    do step = 1, steps
+        call evolve(p, q, V, dVdq, xi, dxi, d2xi, Natoms, Nbeads, constrain, &
+            beta, dt, mass, potential, &
+            Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+            Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+            breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
+            xi_current, mode)
+        if (thermostat .eq. 1) then
+            call random(rn)
+            if (rn .lt. threq) call sample_momentum(p, mass, beta, Natoms, Nbeads)
+        end if
+        if (save_trajectory .eq. 1) call update_vmd_output(q, Natoms, Nbeads, 77, 88)
+
+        ! DEBUG: Check that energy is conserved
+        !call get_ring_polymer_energy(q, mass, beta, Natoms, Nbeads, Ering)
+        !call get_kinetic_energy(p, mass, Natoms, Nbeads, Ek)
+        !write (*,fmt='(4F13.8)') Ek, Ering, sum(V), Ek + Ering + sum(V)
+
+    end do
+
+    if (save_trajectory .eq. 1) then
+        close(unit=77)
+        close(unit=88)
+    end if
+
+end subroutine rpmd_evolve
+
+! Conduct an RPMD simulation, updating the recrossing factor at each step in
+! the trajectory.
+! Parameters:
+!   p - The initial momentum of each bead in each atom
+!   q - The initial position of each bead in each atom
+!   beta - The inverse temperature at which to compute the transmission coefficient
+!   Natoms - The number of atoms in the molecular system
+!   Nbeads - The number of beads to use per atom
+!   dt - The time step to use in the simulation
+!   xi_current - The maximum of the reaction coordinate at this temperature
+!   mass - The mass of each atom in the molecular system
+!   potential - A function that evaluates the potential and force for a given position
+!   steps - The number of time steps to take
+!   save_trajectory - 1 to save the trajectory to disk (slow!), 0 otherwise
+!   Rinf - The distance at which the reactant interaction becomes negligible
+!   massfrac - The mass fraction of each atom
+!   reactant1_atoms - An array of indices for each atom in the first reactant
+!   Nreactant1_atoms - The number of atoms in the first reactant
+!   reactant2_atoms - An array of indices for each atom in the second reactant
+!   Nreactant2_atoms - The number of atoms in the second reactant
+!   Nts - The number of equivalent transition states that define the dividing surface
+!   forming_bonds - An array listing the pairs of indices of each forming bond in each transition state
+!   forming_bond_lengths - An array listing the lengths of each forming bond in each transition state
+!   number_of_forming_bonds - The number of bonds being formed by the reaction
+!   breaking_bonds - An array listing the pairs of indices of each breaking bond in each transition state
+!   breaking_bond_lengths - An array listing the lengths of each breaking bond in each transition state
+!   number_of_breaking_bonds - The number of bonds being broken by the reaction
+!   kappa_num - The numerator of the recrossing factor expression at each time
+!   kappa_denom - The denominator of the recrossing factor expression
+subroutine rpmd_evolve_recrossing(p, q, beta, Natoms, Nbeads, dt, xi_current, mass, potential, &
+  steps, save_trajectory, &
+  Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+  Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+  breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
+  kappa_num, kappa_denom)
+
+    implicit none
+    external potential
+    ! System parameters
+    double precision, intent(in) :: beta
+    integer, intent(in) :: Natoms, Nbeads
+    double precision, intent(inout) :: p(3,Natoms,Nbeads), q(3,Natoms,Nbeads)
+    double precision, intent(in) :: dt
+    double precision, intent(in) :: xi_current
+    double precision, intent(in) :: mass(Natoms)
+    integer, intent(in) :: steps, save_trajectory
+    ! Reactant dividing surface
+    double precision, intent(in) :: massfrac(Natoms)
+    integer, intent(in) :: Nreactant1_atoms, Nreactant2_atoms
+    integer, intent(in) :: reactant1_atoms(Nreactant1_atoms), reactant2_atoms(Nreactant2_atoms)
+    double precision, intent(in) :: Rinf
+    ! Transition state dividing surface
+    integer, intent(in) :: Nts
+    integer, intent(in) :: number_of_forming_bonds, number_of_breaking_bonds
+    integer, intent(in) :: forming_bonds(Nts,number_of_forming_bonds,2)
+    integer, intent(in) :: breaking_bonds(Nts,number_of_breaking_bonds,2)
+    double precision, intent(in) :: forming_bond_lengths(Nts,number_of_forming_bonds)
+    double precision, intent(in) :: breaking_bond_lengths(Nts,number_of_breaking_bonds)
+    double precision, intent(inout) :: kappa_num(steps), kappa_denom
+
+    double precision :: V(Nbeads), dVdq(3,Natoms,Nbeads)
+    double precision :: xi, dxi(3,Natoms), d2xi(3,Natoms,3,Natoms)
+    double precision :: centroid(3,Natoms)
+    double precision :: Ering, Ek, vs, fs
+    integer :: step, mode
+
+    mode = 2
+    Ering = 0.0d0
+    Ek = 0.0d0
+
+    ! Seed the random number generator
+    call random_init()
+
+    if (save_trajectory .eq. 1) then
+        open(unit=777,file='child.xyz')
+        open(unit=888,file='child_centroid.xyz')
+    end if
+
+    call get_centroid(q, Natoms, Nbeads, centroid)
+    call get_reaction_coordinate(centroid, xi, dxi, d2xi, Natoms, &
+        Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+        Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+        breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
+        xi_current, mode)
+    call get_potential(q, xi, dxi, d2xi, V, dVdq, Natoms, Nbeads, potential)
+
+    call get_recrossing_velocity(p, mass, dxi, Natoms, Nbeads, vs)
+    call get_recrossing_flux(mass, dxi, beta, Natoms, fs)
+    if (vs .gt. 0) kappa_denom = kappa_denom + vs / fs
+
+    do step = 1, steps
+        call evolve(p, q, V, dVdq, xi, dxi, d2xi, Natoms, Nbeads, 0, &
+            beta, dt, mass, potential, &
+            Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+            Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+            breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
+            xi_current, mode)
+        if (xi .gt. 0) kappa_num(step) = kappa_num(step) + vs / fs
+        if (save_trajectory .eq. 1) call update_vmd_output(q, Natoms, Nbeads, 777, 888)
+    end do
+
+    if (save_trajectory .eq. 1) then
+        close(unit=777)
+        close(unit=888)
+    end if
+
+end subroutine rpmd_evolve_recrossing
+
 ! Evolve the RPMD system for one time step, optionally applying a constraint
 ! that the system remain on the transition state dividing surface.
 ! Parameters:
