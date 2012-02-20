@@ -125,7 +125,7 @@ subroutine compute_transmission_coefficient(beta, Natoms, Nbeads, dt, xi_current
     total_child_count = 0
 
     ! Seed the random number generator
-    call random_seed()
+    call random_init()
 
     ! Generate initial position using transition state geometry
     ! (All beads start at same position)
@@ -1066,6 +1066,25 @@ subroutine update_vmd_output(q, Natoms, Nbeads, beads_file_number, centroid_file
     end do
 
 end subroutine
+
+! Seed the pseudo-random number generator using the system clock. The
+! implementation is based on an example in the gfortran documentation for
+! the intrinsic random_seed() subroutine.
+subroutine random_init()
+    implicit none
+    integer :: i, n, clock
+    integer, dimension(:), allocatable :: seed
+
+    call random_seed(size=n)
+    allocate(seed(n))
+
+    call system_clock(count=clock)
+
+    seed = clock + 37 * (/ (i - 1, i = 1, n) /)
+    call random_seed(put = seed)
+
+    deallocate(seed)
+end subroutine random_init
 
 ! Compute a pseudo-random number uniformly distributed in [0,1].
 ! Returns:
