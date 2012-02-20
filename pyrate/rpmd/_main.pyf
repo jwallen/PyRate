@@ -14,38 +14,6 @@ python module get_potential__user__routines
 end python module get_potential__user__routines
 python module _main ! in 
     interface  ! in :_main
-        subroutine compute_transmission_coefficient(beta,natoms,nbeads,dt,xi_current,geometry,mass,potential,equilibration_steps,parent_evolution_steps,child_sampling_steps,children_per_sampling,child_evolution_steps,save_parent_trajectory,save_child_trajectories,rinf,massfrac,reactant1_atoms,nreactant1_atoms,reactant2_atoms,nreactant2_atoms,nts,forming_bonds,forming_bond_lengths,number_of_forming_bonds,breaking_bonds,breaking_bond_lengths,number_of_breaking_bonds,kappa) ! in :_main:pyrate/rpmd/_main.f90
-            use get_potential__user__routines
-            double precision intent(in) :: beta
-            integer, optional,intent(in),check(shape(geometry,1)==natoms),depend(geometry) :: natoms=shape(geometry,1)
-            integer intent(in) :: nbeads
-            double precision intent(in) :: dt
-            double precision intent(in) :: xi_current
-            double precision dimension(3,natoms),intent(in) :: geometry
-            double precision dimension(natoms),intent(in),depend(natoms) :: mass
-            external potential
-            integer intent(in) :: equilibration_steps
-            integer intent(in) :: parent_evolution_steps
-            integer intent(in) :: child_sampling_steps
-            integer intent(in) :: children_per_sampling
-            integer intent(in) :: child_evolution_steps
-            integer intent(in) :: save_parent_trajectory
-            integer intent(in) :: save_child_trajectories
-            double precision intent(in) :: rinf
-            double precision dimension(natoms),intent(in),depend(natoms) :: massfrac
-            integer dimension(nreactant1_atoms),intent(in) :: reactant1_atoms
-            integer, optional,intent(in),check(len(reactant1_atoms)>=nreactant1_atoms),depend(reactant1_atoms) :: nreactant1_atoms=len(reactant1_atoms)
-            integer dimension(nreactant2_atoms),intent(in) :: reactant2_atoms
-            integer, optional,intent(in),check(len(reactant2_atoms)>=nreactant2_atoms),depend(reactant2_atoms) :: nreactant2_atoms=len(reactant2_atoms)
-            integer, optional,intent(in),check(shape(forming_bonds,0)==nts),depend(forming_bonds) :: nts=shape(forming_bonds,0)
-            integer dimension(nts,number_of_forming_bonds,2),intent(in) :: forming_bonds
-            double precision dimension(nts,number_of_forming_bonds),intent(in),depend(nts,number_of_forming_bonds) :: forming_bond_lengths
-            integer, optional,intent(in),check(shape(forming_bonds,1)==number_of_forming_bonds),depend(forming_bonds) :: number_of_forming_bonds=shape(forming_bonds,1)
-            integer dimension(nts,number_of_breaking_bonds,2),intent(in),depend(nts) :: breaking_bonds
-            double precision dimension(nts,number_of_breaking_bonds),intent(in),depend(nts,number_of_breaking_bonds) :: breaking_bond_lengths
-            integer, optional,intent(in),check(shape(breaking_bonds,1)==number_of_breaking_bonds),depend(breaking_bonds) :: number_of_breaking_bonds=shape(breaking_bonds,1)
-            double precision intent(out) :: kappa
-        end subroutine compute_transmission_coefficient
         subroutine rpmd_evolve(p,q,beta,natoms,nbeads,dt,xi_current,mass,potential,mode,constrain,thermostat,steps,save_trajectory,rinf,massfrac,reactant1_atoms,nreactant1_atoms,reactant2_atoms,nreactant2_atoms,nts,forming_bonds,forming_bond_lengths,number_of_forming_bonds,breaking_bonds,breaking_bond_lengths,number_of_breaking_bonds) ! in :_main:pyrate/rpmd/_main.f90
             use get_potential__user__routines
             double precision dimension(3,natoms,nbeads),intent(inout) :: p
