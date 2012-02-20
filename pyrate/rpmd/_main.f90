@@ -144,6 +144,94 @@ subroutine rpmd_evolve(p, q, beta, Natoms, Nbeads, dt, xi_current, mass, kforce,
 
 end subroutine rpmd_evolve
 
+subroutine rpmd_evolve_umbrella(p, q, beta, Natoms, Nbeads, dt, xi_current, mass, kforce, potential, &
+  mode, constrain, thermostat, steps, save_trajectory, &
+  Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+  Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+  breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
+  av, av2)
+
+    implicit none
+    external potential
+    ! System parameters
+    double precision, intent(in) :: beta
+    integer, intent(in) :: Natoms, Nbeads
+    double precision, intent(inout) :: p(3,Natoms,Nbeads), q(3,Natoms,Nbeads)
+    double precision, intent(in) :: dt
+    double precision, intent(in) :: xi_current
+    double precision, intent(in) :: mass(Natoms)
+    double precision, intent(in) :: kforce
+    integer, intent(in) :: mode, constrain, thermostat, steps, save_trajectory
+    ! Reactant dividing surface
+    double precision, intent(in) :: massfrac(Natoms)
+    integer, intent(in) :: Nreactant1_atoms, Nreactant2_atoms
+    integer, intent(in) :: reactant1_atoms(Nreactant1_atoms), reactant2_atoms(Nreactant2_atoms)
+    double precision, intent(in) :: Rinf
+    ! Transition state dividing surface
+    integer, intent(in) :: Nts
+    integer, intent(in) :: number_of_forming_bonds, number_of_breaking_bonds
+    integer, intent(in) :: forming_bonds(Nts,number_of_forming_bonds,2)
+    integer, intent(in) :: breaking_bonds(Nts,number_of_breaking_bonds,2)
+    double precision, intent(in) :: forming_bond_lengths(Nts,number_of_forming_bonds)
+    double precision, intent(in) :: breaking_bond_lengths(Nts,number_of_breaking_bonds)
+    ! Return
+    double precision, intent(out) :: av, av2
+
+    double precision :: V(Nbeads), dVdq(3,Natoms,Nbeads)
+    double precision :: xi, dxi(3,Natoms), d2xi(3,Natoms,3,Natoms)
+    double precision :: centroid(3,Natoms)
+    double precision :: threq, rn, Ering, Ek
+    integer :: step
+
+    av = 0.0d0
+    av2 = 0.0d0
+
+    Ering = 0.0d0
+    Ek = 0.0d0
+
+    ! Average frequency of collisions (Andersen thermostat)
+    threq = 1.0d0 / dsqrt(dble(steps))
+
+    ! Seed the random number generator
+    call random_init()
+
+    if (save_trajectory .eq. 1) then
+        open(unit=777,file='child.xyz')
+        open(unit=888,file='child_centroid.xyz')
+    end if
+
+    call get_centroid(q, Natoms, Nbeads, centroid)
+    call get_reaction_coordinate(centroid, xi, dxi, d2xi, Natoms, &
+        Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+        Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+        breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
+        xi_current, mode)
+    call get_potential(q, xi, dxi, d2xi, V, dVdq, Natoms, Nbeads, potential, &
+        beta, mass, kforce, xi_current, mode)
+
+    do step = 1, steps
+        call evolve(p, q, V, dVdq, xi, dxi, d2xi, Natoms, Nbeads, constrain, &
+            beta, dt, mass, kforce, potential, &
+            Rinf, massfrac, reactant1_atoms, Nreactant1_atoms, reactant2_atoms, Nreactant2_atoms, &
+            Nts, forming_bonds, forming_bond_lengths, number_of_forming_bonds, &
+            breaking_bonds, breaking_bond_lengths, number_of_breaking_bonds, &
+            xi_current, mode)
+        av = av + xi
+        av2 = av2 + xi * xi
+        if (thermostat .eq. 1) then
+            call random(rn)
+            if (rn .lt. threq) call sample_momentum(p, mass, beta, Natoms, Nbeads)
+        end if
+        if (save_trajectory .eq. 1) call update_vmd_output(q, Natoms, Nbeads, 777, 888)
+    end do
+
+    if (save_trajectory .eq. 1) then
+        close(unit=777)
+        close(unit=888)
+    end if
+
+end subroutine rpmd_evolve_umbrella
+
 ! Conduct an RPMD simulation, updating the recrossing factor at each step in
 ! the trajectory.
 ! Parameters:
