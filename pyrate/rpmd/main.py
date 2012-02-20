@@ -97,6 +97,124 @@ class RPMD:
         self.Nbeads = 0
         self.xi_current = 0
         self.mode = 0
+    
+    def computeStaticFactor(self, T, Nbeads, dt, 
+                            xi_list,
+                            equilibrationTime,
+                            numberOfTrajectories,
+                            evolutionTime,
+                            kforce,
+                            saveTrajectories=False):
+        """
+        Return the value of the static factor :math:`p^{(n)}(s_1, s_0)` as
+        computed using umbrella integration.
+        """
+        
+        # Set the parameters for the RPMD calculation
+        self.beta = 4.35974417e-18 / (constants.kB * T)
+        self.dt = dt / 2.418884326505e-5
+        self.Nbeads = Nbeads
+        Nxi = len(xi_list)
+        equilibrationTime /= 2.418884326505e-5
+        evolutionTime /= 2.418884326505e-5
+        geometry = self.transitionState.geometry[:,:,0]
+        self.mode = 1
+        
+        logging.info('******************')
+        logging.info('RPMD static factor')
+        logging.info('******************')
+        logging.info('')
+        
+        equilibrationSteps = int(round(equilibrationTime / self.dt))
+        evolutionSteps = int(round(evolutionTime / self.dt))
+        
+        logging.info('Parameters')
+        logging.info('==========')
+        logging.info('Temperature                             = {0:g} K'.format(T))
+        logging.info('Number of beads                         = {0:d}'.format(Nbeads))
+        logging.info('Time step                               = {0:g} ps'.format(self.dt * 2.418884326505e-5))
+        logging.info('Number of umbrella integration windows  = {0:d}'.format(Nxi))
+        logging.info('Initial equilibration time              = {0:g} ps ({1:d} steps)'.format(equilibrationSteps * self.dt * 2.418884326505e-5, equilibrationSteps))
+        logging.info('Trajectory evolution time               = {0:g} ps ({1:d} steps)'.format(evolutionSteps * self.dt * 2.418884326505e-5, evolutionSteps))
+        logging.info('Number of trajectories per window       = {0:d}'.format(numberOfTrajectories))
+        logging.info('')
+
+        # Generate initial position using transition state geometry
+        # (All beads start at same position)
+        q = numpy.zeros((3,self.Natoms,self.Nbeads), order='F')
+        for i in range(3):
+            for j in range(self.Natoms):
+                for k in range(self.Nbeads):
+                    q[i,j,k] = geometry[i,j]
+
+        # Find the window nearest to the dividing surface
+        for start in range(Nxi):
+            if xi_list[start] >= 1:
+                break
+           
+        # Equilibrate in each window to determine the initial positions
+        # First start at xi = 1 and move in the xi > 1 direction, using the
+        # result of the previous xi as the initial position for the next xi
+        q_initial = numpy.zeros((3,self.Natoms,self.Nbeads,Nxi), order='F')
+        for l in range(start, Nxi):
+            xi_current = xi_list[l]
+            logging.info('Equilibrating trajectory at xi = {0:g} for {1:g} ps...'.format(xi_current, equilibrationSteps * self.dt * 2.418884326505e-5))
+            p = self.sampleMomentum()
+            rpmd_evolve(p, q, self.beta, self.dt, xi_current, self.mass, kforce, self.potential,
+                self.mode, 0, 1, equilibrationSteps, saveTrajectories,
+                self.reactants.Rinf, self.reactants.massFractions, self.reactants.reactant1Atoms, self.reactants.reactant2Atoms,
+                self.transitionState.formingBonds, self.transitionState.formingBondLengths,
+                self.transitionState.breakingBonds, self.transitionState.breakingBondLengths,
+            )
+            logging.info('Finished equilibrating trajectory at xi = {0:g}.'.format(xi_current))
+            q_initial[:,:,:,l] = q
+        # Now start at xi = 1 and move in the xi < 1 direction, using the
+        # result of the previous xi as the initial position for the next xi
+        q = q_initial[:,:,:,start]
+        for l in range(start - 1, -1, -1):
+            xi_current = xi_list[l]
+            logging.info('Equilibrating trajectory at xi = {0:g} for {1:g} ps...'.format(xi_current, equilibrationSteps * self.dt * 2.418884326505e-5))
+            p = self.sampleMomentum()
+            rpmd_evolve(p, q, self.beta, self.dt, xi_current, self.mass, kforce, self.potential,
+                self.mode, 0, 1, equilibrationSteps, saveTrajectories,
+                self.reactants.Rinf, self.reactants.massFractions, self.reactants.reactant1Atoms, self.reactants.reactant2Atoms,
+                self.transitionState.formingBonds, self.transitionState.formingBondLengths,
+                self.transitionState.breakingBonds, self.transitionState.breakingBondLengths,
+            )
+            logging.info('Finished equilibrating trajectory at xi = {0:g}.'.format(xi_current))
+            q_initial[:,:,:,l] = q
+        
+        logging.info('')
+        
+        # In each window, evolve a number of trajectories
+        av = numpy.zeros(Nxi, order='F')
+        av2 = numpy.zeros(Nxi, order='F')
+        f = open('reaction_coordinate.dat', 'a')
+        for l in range(Nxi):
+            xi_current = xi_list[l]
+            logging.info('Sampling trajectories at xi = {0:g}...'.format(xi_current))
+            for trajectory in range(numberOfTrajectories):
+                q = q_initial[:,:,:,l]
+                p = self.sampleMomentum()
+                dav, dav2 = rpmd_evolve_umbrella(p, q, self.beta, self.dt, xi_current, self.mass, kforce, self.potential,
+                    self.mode, 0, 1, evolutionSteps, saveTrajectories,
+                    self.reactants.Rinf, self.reactants.massFractions, self.reactants.reactant1Atoms, self.reactants.reactant2Atoms,
+                    self.transitionState.formingBonds, self.transitionState.formingBondLengths,
+                    self.transitionState.breakingBonds, self.transitionState.breakingBondLengths,
+                )
+                av[l] += dav
+                av2[l] += dav2
+                
+                av_temp = av[l] / ((trajectory+1) * evolutionSteps)
+                av2_temp = av2[l] / ((trajectory+1) * evolutionSteps)
+                
+                logging.info('{0:7d} {1:15.5e} {2:15.5e} {3:15.5e}'.format(trajectory+1, av_temp, av2_temp, av2_temp - av_temp * av_temp))
+    
+            logging.info('Finished sampling trajectories at xi = {0:g}...'.format(xi_current))
+            
+            f.write('{0:9.5f} {1:15.5e} {2:15.5e}\n'.format(xi_current, av_temp, av2_temp - av_temp * av_temp))
+        
+        f.close()
 
     def computeTransmissionCoefficient(self, T, Nbeads, dt, 
                                        equilibrationTime,
