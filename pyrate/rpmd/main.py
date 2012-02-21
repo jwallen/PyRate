@@ -69,6 +69,23 @@ def runUmbrellaTrajectory(rpmd, xi_current, q, kforce, evolutionSteps, saveTraje
         rpmd.transitionState.breakingBonds, rpmd.transitionState.breakingBondLengths,
     )
 
+def runRecrossingTrajectory(rpmd, xi_current, p, q, evolutionSteps, saveTrajectory):
+    """
+    Run an individual recrossing factor child trajectory, returning the 
+    contributions to the numerator and denominator of the recrossing factor
+    from this trajectory.
+    """
+    kappa_num = numpy.zeros(evolutionSteps, order='F')
+    kappa_denom = numpy.array(0.0, order='F')
+    rpmd_evolve_recrossing(p, q, rpmd.beta, rpmd.dt, xi_current, rpmd.mass, rpmd.potential,
+        saveTrajectory,
+        rpmd.reactants.Rinf, rpmd.reactants.massFractions, rpmd.reactants.reactant1Atoms, rpmd.reactants.reactant2Atoms,
+        rpmd.transitionState.formingBonds, rpmd.transitionState.formingBondLengths,
+        rpmd.transitionState.breakingBonds, rpmd.transitionState.breakingBondLengths,
+        kappa_num, kappa_denom,
+    )
+    return kappa_num, kappa_denom
+
 class RPMD:
     """
     A representation of a ring polymer molecular dynamics (RPMD) job for
@@ -303,6 +320,10 @@ class RPMD:
         self.xi_current = xi_current
         self.mode = 2
         
+        # Create a pool of subprocesses to farm out the child trajectories to
+        processes = multiprocessing.cpu_count()
+        pool = multiprocessing.Pool(processes=processes)
+
         logging.info('*****************************')
         logging.info('RPMD transmission coefficient')
         logging.info('*****************************')
@@ -360,28 +381,26 @@ class RPMD:
 
             # Sample a number of child trajectories using the current parent
             # configuration
+            results = []
             saveChildTrajectory = saveChildTrajectories
             for childCount in range(childrenPerSampling / 2):
                 q_child = numpy.array(q.copy(), order='F')
                 p_child = self.sampleMomentum()
-                rpmd_evolve_recrossing(-1.0 * p_child, q_child, self.beta, self.dt, xi_current, 
-                    self.mass, self.potential,
-                    saveChildTrajectory,
-                    self.reactants.Rinf, self.reactants.massFractions, self.reactants.reactant1Atoms, self.reactants.reactant2Atoms,
-                    self.transitionState.formingBonds, self.transitionState.formingBondLengths,
-                    self.transitionState.breakingBonds, self.transitionState.breakingBondLengths,
-                    kappa_num, kappa_denom,
-                )
+                
+                args = (self, xi_current, -p_child, q_child, childEvolutionSteps, saveChildTrajectory)
+                results.append(pool.apply_async(runRecrossingTrajectory, args))
+                
                 saveChildTrajectory = False
-                q_child = numpy.array(q.copy(), order='F')
-                rpmd_evolve_recrossing(p_child, q_child, self.beta, self.dt, xi_current, 
-                    self.mass, self.potential,
-                    saveChildTrajectory,
-                    self.reactants.Rinf, self.reactants.massFractions, self.reactants.reactant1Atoms, self.reactants.reactant2Atoms,
-                    self.transitionState.formingBonds, self.transitionState.formingBondLengths,
-                    self.transitionState.breakingBonds, self.transitionState.breakingBondLengths,
-                    kappa_num, kappa_denom,
-                )
+                
+                args = (self, xi_current, p_child, q_child, childEvolutionSteps, saveChildTrajectory)
+                results.append(pool.apply_async(runRecrossingTrajectory, args))           
+            
+            for childCount in range(childrenPerSampling):
+                # This line will block until the child trajectory finishes
+                num, denom = results[childCount].get()
+                # Update the numerator and denominator of the recrossing factor expression
+                kappa_num += num
+                kappa_denom += denom
         
             logging.info('Finished sampling {0} child trajectories at {1:g} ps.'.format(childrenPerSampling, iter * childSamplingSteps * self.dt * 2.418884326505e-5))
             
