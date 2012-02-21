@@ -38,6 +38,7 @@ import math
 import numpy
 import logging
 import quantities as pq
+import multiprocessing
 
 import pyrate.units as units
 import pyrate.constants as constants
@@ -54,6 +55,19 @@ class RPMDError(Exception):
     pass
 
 ################################################################################
+
+def runUmbrellaTrajectory(rpmd, xi_current, q, kforce, evolutionSteps, saveTrajectory):
+    """
+    Run an individual umbrella integration trajectory, returning the sum of the
+    first and second moments of the reaction coordinate at each time step.
+    """
+    p = rpmd.sampleMomentum()
+    return rpmd_evolve_umbrella(p, q, rpmd.beta, rpmd.dt, xi_current, rpmd.mass, kforce, rpmd.potential,
+        rpmd.mode, 0, 1, evolutionSteps, saveTrajectory,
+        rpmd.reactants.Rinf, rpmd.reactants.massFractions, rpmd.reactants.reactant1Atoms, rpmd.reactants.reactant2Atoms,
+        rpmd.transitionState.formingBonds, rpmd.transitionState.formingBondLengths,
+        rpmd.transitionState.breakingBonds, rpmd.transitionState.breakingBondLengths,
+    )
 
 class RPMD:
     """
@@ -120,6 +134,14 @@ class RPMD:
         geometry = self.transitionState.geometry[:,:,0]
         self.mode = 1
         
+        av = numpy.zeros(Nxi)
+        av2 = numpy.zeros(Nxi)
+        
+        # Create a pool of subprocesses to farm out the individual trajectories to
+        processes = multiprocessing.cpu_count()
+        pool = multiprocessing.Pool(processes=processes)
+        results = []
+        
         logging.info('******************')
         logging.info('RPMD static factor')
         logging.info('******************')
@@ -158,6 +180,8 @@ class RPMD:
         q_initial = numpy.zeros((3,self.Natoms,self.Nbeads,Nxi), order='F')
         for l in range(start, Nxi):
             xi_current = xi_list[l]
+            
+            # Equilibrate in this window
             logging.info('Equilibrating trajectory at xi = {0:g} for {1:g} ps...'.format(xi_current, equilibrationSteps * self.dt * 2.418884326505e-5))
             p = self.sampleMomentum()
             rpmd_evolve(p, q, self.beta, self.dt, xi_current, self.mass, kforce, self.potential,
@@ -168,11 +192,22 @@ class RPMD:
             )
             logging.info('Finished equilibrating trajectory at xi = {0:g}.'.format(xi_current))
             q_initial[:,:,:,l] = q
+            
+            # Spawn a number of sampling trajectories using this equilibrated position as the starting point
+            logging.info('Spawning {0:d} sampling trajectories at xi = {1:g}...'.format(numberOfTrajectories, xi_current))
+            args = (self, xi_current, q, kforce, evolutionSteps, saveTrajectories)
+            for trajectory in range(numberOfTrajectories):
+                results.append(pool.apply_async(runUmbrellaTrajectory, args))           
+
+            logging.info('')
+            
         # Now start at xi = 1 and move in the xi < 1 direction, using the
         # result of the previous xi as the initial position for the next xi
         q = q_initial[:,:,:,start]
         for l in range(start - 1, -1, -1):
             xi_current = xi_list[l]
+            
+            # Equilibrate in this window
             logging.info('Equilibrating trajectory at xi = {0:g} for {1:g} ps...'.format(xi_current, equilibrationSteps * self.dt * 2.418884326505e-5))
             p = self.sampleMomentum()
             rpmd_evolve(p, q, self.beta, self.dt, xi_current, self.mass, kforce, self.potential,
@@ -184,36 +219,41 @@ class RPMD:
             logging.info('Finished equilibrating trajectory at xi = {0:g}.'.format(xi_current))
             q_initial[:,:,:,l] = q
         
-        logging.info('')
+            # Spawn a number of sampling trajectories using this equilibrated position as the starting point
+            logging.info('Spawning {0:d} sampling trajectories at xi = {1:g}...'.format(numberOfTrajectories, xi_current))
+            args = (self, xi_current, q, kforce, evolutionSteps, saveTrajectories)
+            for trajectory in range(numberOfTrajectories):
+                results.append(pool.apply_async(runUmbrellaTrajectory, args))           
+
+            logging.info('')
         
-        # In each window, evolve a number of trajectories
-        av = numpy.zeros(Nxi, order='F')
-        av2 = numpy.zeros(Nxi, order='F')
-        f = open('reaction_coordinate.dat', 'a')
+        # Wait for each trajectory to finish, then update the mean and variance
+        count = 0
+        f = open('reaction_coordinate.dat', 'w')
         for l in range(Nxi):
             xi_current = xi_list[l]
-            logging.info('Sampling trajectories at xi = {0:g}...'.format(xi_current))
+            logging.info('Processing {0:d} trajectories at xi = {1:g}...'.format(numberOfTrajectories, xi_current))
             for trajectory in range(numberOfTrajectories):
-                q = q_initial[:,:,:,l]
-                p = self.sampleMomentum()
-                dav, dav2 = rpmd_evolve_umbrella(p, q, self.beta, self.dt, xi_current, self.mass, kforce, self.potential,
-                    self.mode, 0, 1, evolutionSteps, saveTrajectories,
-                    self.reactants.Rinf, self.reactants.massFractions, self.reactants.reactant1Atoms, self.reactants.reactant2Atoms,
-                    self.transitionState.formingBonds, self.transitionState.formingBondLengths,
-                    self.transitionState.breakingBonds, self.transitionState.breakingBondLengths,
-                )
+                
+                # This line will block until the trajectory finishes
+                dav, dav2 = results[count].get()
+                
+                # Update the mean and variance with the results from this trajectory
+                # Note that these are counted at each time step in each trajectory
                 av[l] += dav
                 av2[l] += dav2
                 
+                # Print the updated mean and variance to the log file
                 av_temp = av[l] / ((trajectory+1) * evolutionSteps)
                 av2_temp = av2[l] / ((trajectory+1) * evolutionSteps)
-                
                 logging.info('{0:7d} {1:15.5e} {2:15.5e} {3:15.5e}'.format(trajectory+1, av_temp, av2_temp, av2_temp - av_temp * av_temp))
     
-            logging.info('Finished sampling trajectories at xi = {0:g}...'.format(xi_current))
+                count += 1
+                
+            logging.info('Finished processing trajectories at xi = {0:g}...'.format(xi_current))
             
             f.write('{0:9.5f} {1:15.5e} {2:15.5e}\n'.format(xi_current, av_temp, av2_temp - av_temp * av_temp))
-        
+                
         f.close()
 
     def computeTransmissionCoefficient(self, T, Nbeads, dt, 
